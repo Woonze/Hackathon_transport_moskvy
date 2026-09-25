@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import { Activity, ArrowDownRight, FlaskConical, ArrowUpRight, CalendarDays, ChevronDown, Clock3, Menu, Route as RouteIcon, Sparkles, TramFront, Users, Zap } from 'lucide-react'
+import { Activity, ArrowDownRight, FlaskConical, ArrowUpRight, CalendarDays, ChevronDown, Clock3, Route as RouteIcon, Sparkles, TramFront, Users, Zap } from 'lucide-react'
 import type { FeatureCollection, LineString, MultiLineString } from 'geojson'
 import './styles.css'
 
@@ -121,7 +121,7 @@ function App() {
       <button aria-label="Маршруты" title="Маршруты" className={`nav-item ${navSection === 'routes' ? 'active' : ''}`} onClick={() => navigateTo('routes', 'routes')}><RouteIcon size={18} /><span>Маршруты</span><span className="nav-soon">10</span></button>
       <button aria-label="История данных" title="История данных" className={`nav-item ${navSection === 'history' ? 'active' : ''}`} onClick={() => navigateTo('history', 'history')}><CalendarDays size={18} /><span>История данных</span></button>
       <a className="nav-item" href="#/tester" aria-label="Проверка API" title="Проверка API" style={{ textDecoration: 'none', color: 'inherit' }}><FlaskConical size={18} /><span>Проверка API</span></a>
-      <div className="side-bottom"><div className="system-card"><div className="system-row"><span className={`status-light ${health?.status === 'ok' ? '' : 'offline'}`} /> {health?.status === 'ok' ? 'Сервис доступен' : 'Проверяем сервис'}</div><p>Горизонт прогноза<br />01 ноя — 31 дек 2025</p><div className="system-foot"><span>API {health?.version ?? '—'}</span><span className="spark"><Sparkles size={13} /> ML</span></div></div><div className="user-row"><div className="avatar">ЕД</div><div><strong>Диспетчер ЕДЦ</strong><span>Москва · Трамвай</span></div><Menu size={17} className="user-menu" /></div></div>
+      <div className="side-bottom"><div className="system-card"><div className="system-row"><span className={`status-light ${health?.status === 'ok' ? '' : 'offline'}`} /> {health?.status === 'ok' ? 'Сервис доступен' : 'Проверяем сервис'}</div><p>Горизонт прогноза<br />01 ноя — 31 дек 2025</p><div className="system-foot"><span>API {health?.version ?? '—'}</span><span className="spark"><Sparkles size={13} /> ML</span></div></div><div className="user-row"><div className="avatar">ЕД</div><div><strong>Диспетчер ЕДЦ</strong><span>Москва · Трамвай</span></div></div></div>
     </aside>
 
     <main className="main-content">
