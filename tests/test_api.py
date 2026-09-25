@@ -187,13 +187,12 @@ def test_calendar_endpoint(client):
     assert client.get("/api/v1/calendar?start=2025-12-01&end=2025-11-01").status_code == 400
 
 
-def test_adjusted_calendar_corrects_only_holidays(client):
+def test_adjusted_calendar_does_not_double_count_ml_holidays(client):
     body = {"route": 7, "granularity": "day", "start": "2025-11-02", "end": "2025-11-05", "calendar": True}
     r = client.post("/api/v1/forecast/adjusted", json=body).json()
     by = {p["date"]: p for p in r["data"]}
-    factor = client.get("/api/v1/calendar").json()["holiday_factor"]
-    assert abs(by["2025-11-03"]["passengers"] - by["2025-11-03"]["base"] * factor) <= 12
-    assert by["2025-11-02"]["passengers"] == by["2025-11-02"]["base"] and by["2025-11-05"]["passengers"] == by["2025-11-05"]["base"]
+    assert all(row["passengers"] == row["base"] for row in by.values())
+    assert r["summary"]["calendar_in_model"] is True
     assert r["summary"]["calendar_days"] == ["2025-11-03", "2025-11-04", "2025-12-31"]
     assert client.post("/api/v1/forecast/adjusted", json={"route": 7}).json()["summary"]["calendar_days"] == []
 

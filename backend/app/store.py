@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import datetime, timezone
+import hashlib
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
 
 from . import config
 from .services import external, overlay, regime, stopmodel
+from model.forecaster import MODEL_NAME, MODEL_VERSION, fit_predict
 
 log = logging.getLogger("tram")
 
@@ -41,7 +43,8 @@ class Series:
 
 
 class DataStore:
-    def __init__(self) -> None:
+    def __init__(self, database=None) -> None:
+        self.database = database
         self.cache: dict = {}
         self._lock = threading.Lock()
         self._stamp: object = object()
@@ -51,20 +54,31 @@ class DataStore:
         self.routes = sorted(pred["route"].unique().astype(int).tolist())
         self.forecast = Series.from_frame(pred, "prediction", self.routes, config.FORECAST_START, config.FORECAST_END)
         self.forecast_rows = int(self.forecast.values.size)
+        self._training_signature: str | None = None
+        self.ml_status = {
+            "name": MODEL_NAME,
+            "version": MODEL_VERSION,
+            "training_rows": 0,
+            "duration_ms": 0.0,
+            "updated_at": None,
+            "updates": 0,
+            "calendar_in_model": False,
+            "pending_boardings": 0,
+        }
         self.stops = stopmodel.build_index(self.routes)
         self.external = external.load()
         self.refresh(force=True)
 
     def refresh(self, force: bool = False) -> bool:
         """Пересобирает историю, если файл принятых данных изменился (в т.ч. другим воркером)."""
-        stamp = overlay.stamp()
+        stamp = self.database.ingest_revision() if self.database else overlay.stamp()
         if not force and stamp == self._stamp:
             return False
         with self._lock:
             if not force and stamp == self._stamp:
                 return False
             try:
-                self._apply(overlay.read())
+                self._apply(self.database.read_ingested() if self.database else overlay.read())
             except Exception:  # повреждённый файл не должен ронять ни запросы, ни запуск сервиса
                 log.exception("Не удалось применить принятые данные, оставляем прежнее состояние")
                 if not hasattr(self, "history"):
@@ -76,12 +90,20 @@ class DataStore:
     def _apply(self, extra: pd.DataFrame) -> None:
         self.ingested_boardings = int(extra["boardings"].sum()) if len(extra) else 0
         self.updated_at = datetime.now(timezone.utc)
-        frame = pd.concat([self._labels, extra.drop(columns="batch_id")], ignore_index=True)
+        frame = pd.concat([self._labels, extra.drop(columns=["batch_id", "complete"])], ignore_index=True)
         last = max(config.HISTORY_END, extra["date"].max().date()) if len(extra) else config.HISTORY_END
         history = Series.from_frame(frame, "boardings", self.routes, config.HISTORY_START, last)
-        self._rebuild(history, last)
+        completed = pd.DatetimeIndex(extra.loc[extra.complete & extra.date.gt(pd.Timestamp(config.HISTORY_END)), "date"].unique()).sort_values()
+        usable = extra.date.le(pd.Timestamp(config.HISTORY_END)) | extra.date.isin(completed)
+        training_frame = pd.concat([self._labels, extra.loc[usable, ["route", "date", "hour", "boardings"]]], ignore_index=True)
+        training_frame["date"] = pd.to_datetime(training_frame["date"]).astype("datetime64[ns]")
+        training_dates = pd.date_range(config.HISTORY_START, config.HISTORY_END, freq="D").union(completed)
+        last_complete = max(config.HISTORY_END, completed.max().date()) if len(completed) else config.HISTORY_END
+        self._rebuild(history, last, training_frame, training_dates, last_complete)
+        self.ml_status["pending_boardings"] = int(extra.loc[~usable, "boardings"].sum())
 
-    def _rebuild(self, history: Series, last) -> None:
+    def _rebuild(self, history: Series, last, training_frame: pd.DataFrame, training_dates: pd.DatetimeIndex, last_complete) -> None:
+        self._fit_streaming_forecast(training_frame, training_dates, last_complete)
         lo, hi = history.span(config.RECENT_START, config.HISTORY_END)
         daily = history.values[:, lo:hi].sum(axis=2)
         wd = history.weekday[lo:hi]
@@ -103,3 +125,39 @@ class DataStore:
         self.history_end = last
         self.history = history
         self.regime = regime.compute(history, self.external.calendar)
+
+    def _fit_streaming_forecast(self, training_frame: pd.DataFrame, training_dates: pd.DatetimeIndex, last_complete) -> None:
+        """Retrain after complete-day data changes; partial stream records remain pending."""
+        fingerprint = pd.util.hash_pandas_object(training_frame[["route", "date", "hour", "boardings"]], index=False).to_numpy().tobytes()
+        signature = hashlib.blake2b(fingerprint, digest_size=16).hexdigest()
+        if signature == self._training_signature:
+            return
+        first = max(config.FORECAST_START, last_complete + timedelta(days=1))
+        if first > config.FORECAST_END:
+            return
+        dates = pd.date_range(first, config.FORECAST_END, freq="D")
+        target = pd.MultiIndex.from_product(
+            [self.routes, dates, range(24)], names=["route", "date", "hour"]
+        ).to_frame(index=False)
+        try:
+            fitted = fit_predict(training_frame, target, self.routes, self.external.calendar, observed_dates=training_dates)
+            values = self.forecast.values.copy()
+            route_idx = fitted.predictions.route.map(self.forecast.route_index).to_numpy(dtype=int)
+            day_idx = (fitted.predictions.date - self.forecast.dates[0]).dt.days.to_numpy(dtype=int)
+            hour_idx = fitted.predictions.hour.to_numpy(dtype=int)
+            values[route_idx, day_idx, hour_idx] = fitted.predictions.prediction.to_numpy(dtype=np.int64)
+            self.forecast = Series(self.routes, self.forecast.dates, values)
+            self.ml_status = {
+                "name": fitted.model_name,
+                "version": fitted.model_version,
+                "training_rows": fitted.training_rows,
+                "duration_ms": fitted.duration_ms,
+                "updated_at": fitted.trained_at,
+                "updates": self.ml_status["updates"] + 1,
+                "calendar_in_model": bool(self.external.calendar),
+                "pending_boardings": self.ml_status.get("pending_boardings", 0),
+            }
+            self._training_signature = signature
+        except Exception:
+            # Keep the latest valid prediction live if a newly ingested batch is malformed.
+            log.exception("Не удалось переобучить потоковую ML-модель; сохранён прежний прогноз")

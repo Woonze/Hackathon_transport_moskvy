@@ -206,7 +206,7 @@ function AdjustTab({ routes }: { routes: number[] }) {
         <Field label="С"><input type="date" value={start} onChange={(e) => setRange([e.target.value, end])} /></Field>
         <Field label="По"><input type="date" value={end} onChange={(e) => setRange([start, e.target.value])} /></Field>
         {slider('weather', 'Погода')}{slider('event', 'Событие')}{slider('season', 'Сезон')}
-        <label className="t-check"><input type="checkbox" checked={calendar} onChange={(e) => setCalendar(e.target.checked)} /> Календарь РФ (праздничные будни)</label>
+        <label className="t-check"><input type="checkbox" checked={calendar} onChange={(e) => setCalendar(e.target.checked)} /> Календарь РФ (уже учтён ML-моделью; флаг совместимости)</label>
         <label className="t-check"><input type="checkbox" checked={regime} onChange={(e) => setRegime(e.target.checked)} /> Сдвиги режима</label>
         <label className="t-check"><input type="checkbox" checked={weatherAuto} onChange={(e) => setWeatherAuto(e.target.checked)} /> Погода по архиву</label>
       </div>
@@ -355,6 +355,7 @@ const SAMPLE = [
 function IngestTab({ apiKey }: { apiKey: string }) {
   const [text, setText] = useState(JSON.stringify(SAMPLE, null, 2))
   const [batch, setBatch] = useState('')
+  const [complete, setComplete] = useState(false)
   const [res, setRes] = useState<Result | null>(null)
   const [check, setCheck] = useState<Result | null>(null)
   const [listen, setListen] = useState(false)
@@ -363,14 +364,15 @@ function IngestTab({ apiKey }: { apiKey: string }) {
   const send = async () => {
     let records: unknown
     try { records = JSON.parse(text) } catch (e) { setRes({ url: '/api/v1/ingest/validations', method: 'POST', status: 0, ms: 0, serverMs: null, data: `Некорректный JSON: ${String(e)}` }); return }
-    setRes(await post('/api/v1/ingest/validations', { records, ...(batch ? { batch_id: batch } : {}) }, apiKey ? { 'X-API-Key': apiKey } : {}))
+    setRes(await post('/api/v1/ingest/validations', { records, complete, ...(batch ? { batch_id: batch } : {}) }, apiKey ? { 'X-API-Key': apiKey } : {}))
   }
   return (
     <>
-      <p className="t-note">Пакет попадает в историю и сохраняется в <code>artifacts/ingested.csv</code>. Повторная отправка того же пакета не задваивает данные. Чтобы сбросить, удалите этот файл и перезапустите сервис.</p>
+      <p className="t-note">Пакет сразу попадает в историю и сохраняется в <code>artifacts/ingested.csv</code>. ML-модель обучается на новых датах, когда отправитель подтвердил полноту их данных. Повторная отправка пакета не задваивает посадки.</p>
       <textarea className="t-area" value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
       <div className="t-form">
         <Field label="batch_id (необязательно)"><input value={batch} onChange={(e) => setBatch(e.target.value)} placeholder="по содержимому" /></Field>
+        <label className="t-check"><input type="checkbox" checked={complete} onChange={(e) => setComplete(e.target.checked)} /> Данные за даты пакета полные: завершить дни и переобучить ML</label>
         <button onClick={send}>Отправить пакет</button>
         <button className="ghost" onClick={async () => setCheck(await call('/api/v1/history?route=7&granularity=hour&start=2025-11-03&end=2025-11-03'))}>Проверить историю 03.11, маршрут 7</button>
       </div>
@@ -430,7 +432,7 @@ function ErrorsTab({ apiKey, guarded }: { apiKey: string; guarded: boolean }) {
 
 const TABS = ['Ряды', 'Экспорт', 'Коэффициенты', 'Год', 'Остановки', 'Диспетчер', 'Приём данных', 'Ошибки'] as const
 
-export default function Tester() {
+export default function Tester({ username, onLogout }: { username: string; onLogout: () => void }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>('Ряды')
   const [routes, setRoutes] = useState<number[]>([])
   const [health, setHealth] = useState<Result | null>(null)
@@ -444,7 +446,7 @@ export default function Tester() {
     <div className="t-root">
       <style>{CSS}</style>
       <header>
-        <h1>Проверка API</h1>
+        <div className="t-line" style={{ justifyContent: 'space-between' }}><h1>Проверка API</h1><div className="t-line"><span className="t-muted">{username}</span><button className="ghost" onClick={onLogout}>Выйти</button></div></div>
         <div className="t-muted">
           {h ? <>сервис v{h.version} · история {h.history_period[0]} — {h.history_period[1]} · прогноз {h.forecast_period[0]} — {h.forecast_period[1]} · маршрутов {h.routes}</>
              : health ? <span className="t-error">Сервис недоступен (статус {health.status || 'нет ответа'})</span> : 'Подключение…'}
@@ -470,6 +472,7 @@ export default function Tester() {
 const CSS = `
 .t-root{max-width:1100px;margin:0 auto;padding:20px 16px 60px;color:#20283a;font-size:14px}
 .t-root h1{margin:0 0 4px;font-size:24px}.t-root h3{margin:22px 0 6px;font-size:15px}
+.t-root header button.ghost{border:1px solid #dfe4ee;background:#fff;color:#51617b;border-radius:8px;padding:7px 13px}
 .t-root header nav{display:flex;gap:16px;margin:10px 0 14px}.t-root a{color:#2e6bff;text-decoration:none}
 .t-muted{color:#8c95a7;font-size:12px}.t-note{background:#f0f4ff;border-radius:8px;padding:8px 12px;margin:10px 0}
 .t-tabs{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid #edf0f5;padding-bottom:10px;margin-bottom:14px}

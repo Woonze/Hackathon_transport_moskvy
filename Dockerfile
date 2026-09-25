@@ -1,5 +1,8 @@
 FROM node:22-alpine AS frontend-build
 WORKDIR /ui
+ARG VITE_BASE=/
+ARG VITE_API_URL=
+ENV VITE_BASE=${VITE_BASE} VITE_API_URL=${VITE_API_URL}
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
@@ -11,6 +14,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY backend/ ./backend/
+COPY model/ ./model/
 COPY dataset/labels/ ./dataset/labels/
 COPY artifacts/routes.geojson ./artifacts/routes.geojson
 COPY artifacts/stops.json ./artifacts/stops.json

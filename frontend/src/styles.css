@@ -9,3 +9,4 @@
 .status-light.offline,.live-dot.offline{background:#e65f73;box-shadow:0 0 0 3px #e65f7320}
 #overview,#routes,#history{scroll-margin-top:72px}
 .info-banner{background:#fff8e8;border:1px solid #f3dfae;color:#77591d;border-radius:8px;padding:12px 15px;margin-bottom:13px;font-size:11px;line-height:1.55}
+.logout-button{border:1px solid #e5e9f1;background:#fff;color:#647086;border-radius:7px;padding:6px 10px;font-size:10px;font-weight:600}.logout-button:hover{border-color:#cbd4e3;color:#34425a}

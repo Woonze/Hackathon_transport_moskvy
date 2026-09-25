@@ -41,6 +41,7 @@ def adjusted(store, req: AdjustRequest) -> dict:
             "global_multiplier": round(req.factors.weather * req.factors.event * req.factors.season, 4),
             "rules_applied": len(req.rules),
             "calendar_days": [d.isoformat() for d in ext.holidays] if req.calendar else [],
+            "calendar_in_model": store.ml_status.get("calendar_in_model", False),
             "regime_cells": [{"route": c["route"], "weekday": c["weekday_name"], "factor": c["factor"]} for c in store.regime if req.route in (None, c["route"])] if req.regime else [],
             "weather_days": [d["date"] for d in _weather_hits(store)] if req.weather_auto else [],
         },
