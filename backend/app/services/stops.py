@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import date
 
 from .. import config
@@ -18,6 +19,24 @@ def _source(store: DataStore, kind: Kind):
 
 def _stop_dict(s: dict) -> dict:
     return {k: s[k] for k in _PUBLIC}
+
+
+def _allocate(total: int, shares: list[float]) -> list[int]:
+    """Allocate an integer total proportionally while preserving its exact sum."""
+    if not shares:
+        return []
+    positive = [max(0.0, share) for share in shares]
+    share_total = sum(positive)
+    if total <= 0 or share_total <= 0:
+        return [0] * len(shares)
+
+    exact = [total * share / share_total for share in positive]
+    allocated = [math.floor(value) for value in exact]
+    remainder = total - sum(allocated)
+    order = sorted(range(len(shares)), key=lambda i: exact[i] - allocated[i], reverse=True)
+    for i in order[:remainder]:
+        allocated[i] += 1
+    return allocated
 
 
 def require_route(store: DataStore, route: int) -> dict[int, list[dict]]:
@@ -57,10 +76,11 @@ def catalog(store: DataStore, route: int | None) -> dict:
 def flow(store: DataStore, kind: Kind, route: int, start: date, end: date, hour_from: int, hour_to: int) -> dict:
     directions = require_route(store, route)
     total = route_total(store, kind, route, start, end, hour_from, hour_to)
+    flat = [s for d in sorted(directions) for s in directions[d]]
+    boardings = _allocate(total, [s["board_share"] for s in flat])
     stops = [
-        {**_stop_dict(s), "boardings": round(total * s["board_share"]), "share": round(s["board_share"], 5)}
-        for d in sorted(directions)
-        for s in directions[d]
+        {**_stop_dict(s), "boardings": count, "share": round(s["board_share"], 5)}
+        for s, count in zip(flat, boardings)
     ]
     return {"estimated": True, "method": METHOD, "kind": kind.value, "route": route, "route_total": total, "stops": stops}
 

@@ -21,12 +21,18 @@ def test_catalog_only_routes_with_stops(client):
 
 def test_flow_sums_to_route_total_and_respects_hours(client):
     full = client.get("/api/v1/stops/flow?route=7&start=2025-11-03&end=2025-11-09").json()
-    assert abs(sum(s["boardings"] for s in full["stops"]) - full["route_total"]) <= len(full["stops"]) / 2
+    assert sum(s["boardings"] for s in full["stops"]) == full["route_total"]
     peak = client.get("/api/v1/stops/flow?route=7&start=2025-11-03&end=2025-11-09&hour_from=7&hour_to=9").json()
     assert 0 < peak["route_total"] < full["route_total"]
     first = next(s for s in full["stops"] if s["direction"] == 0 and s["sequence"] == 1)
     last = [s for s in full["stops"] if s["direction"] == 0][-1]
     assert first["boardings"] > last["boardings"]  # начальная остановка нагружена сильнее конечной
+
+
+@pytest.mark.parametrize("route", [1, 5, 7, 11, 12])
+def test_flow_conserves_total_for_every_route_with_stops(client, route):
+    result = client.get(f"/api/v1/stops/flow?route={route}&start=2025-11-03&end=2025-11-03").json()
+    assert sum(stop["boardings"] for stop in result["stops"]) == result["route_total"]
 
 
 def test_flow_history_and_route5_zero(client):
