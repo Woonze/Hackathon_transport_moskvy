@@ -1,4 +1,5 @@
 import pytest
+import pandas as pd
 from fastapi.testclient import TestClient
 
 from backend.app import config
@@ -51,6 +52,17 @@ def test_ingest_is_idempotent_by_content_and_batch_id(client):
     assert hour_total(client, 7, "2025-10-21", 10) == before + 1
     assert post(client, records, batch_id="manual-1").json()["status"] == "accepted"
     assert post(client, records, batch_id="manual-1").json()["status"] == "already_ingested"
+    conflict = post(client, [rec("2025-10-21 11:00:00")], batch_id="manual-1")
+    assert conflict.status_code == 409 and conflict.json()["code"] == "batch_id_conflict"
+
+
+def test_ingest_content_idempotency_ignores_record_order(client):
+    records = [rec("2025-10-21 10:00:00"), rec("2025-10-21 10:30:00")]
+    before = hour_total(client, 7, "2025-10-21", 10)
+    assert post(client, records).json()["status"] == "accepted"
+    retry = post(client, list(reversed(records))).json()
+    assert retry["status"] == "already_ingested"
+    assert hour_total(client, 7, "2025-10-21", 10) == before + 2
 
 
 def test_ingest_dedups_device_and_tran_no_within_batch(client):
@@ -58,6 +70,21 @@ def test_ingest_dedups_device_and_tran_no_within_batch(client):
                       rec("2025-10-22 09:00:01", device_no="5", tran_no="1"),
                       rec("2025-10-22 09:00:02", device_no="6", tran_no="1")]).json()
     assert r["duplicates"] == 1 and r["accepted"] == 2
+
+
+@pytest.mark.parametrize("failed_first", [True, False])
+def test_failed_duplicate_cannot_hide_successful_validation(client, failed_first):
+    before = _day(client, 7, "2025-10-22")
+    failed = rec("2025-10-22 09:00:00", result=90, device_no="8", tran_no="2")
+    successful = rec("2025-10-22 09:00:00", device_no="8", tran_no="2")
+    records = [failed, successful] if failed_first else [successful, failed]
+
+    result = post(client, records).json()
+
+    assert result["accepted"] == 1
+    assert result["duplicates"] == 0
+    assert result["rejected"]["validation_failed"] == 1
+    assert _day(client, 7, "2025-10-22") == before + 1
 
 
 def test_new_month_extends_history_and_export(client):
@@ -76,6 +103,38 @@ def test_second_worker_sees_ingested_data(client):
     ingest.process([rec("2025-10-23 12:00:00", route="1 трамвай")], None, other_store)
     assert other_store is not client.app.state.store
     assert hour_total(client, 1, "2025-10-23", 12) == before + 1
+
+
+def test_overlay_lock_serializes_concurrent_processes(tmp_path):
+    """Два процесса одновременно добавляют пакет: заголовок и обе строки сохраняются."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import pandas as pd
+
+    overlay_path = tmp_path / "concurrent.csv"
+    code = (
+        "import pandas as pd, sys; "
+        "from pathlib import Path; "
+        "from backend.app import config; config.OVERLAY = Path(sys.argv[1]); "
+        "from backend.app.services.overlay import append; "
+        "append(sys.argv[2], pd.DataFrame([{'route': 7, 'date': pd.Timestamp('2025-10-25'), 'hour': 11, 'boardings': 1}]))"
+    )
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    env["INGEST_FILE"] = str(overlay_path)
+    cwd = Path(__file__).resolve().parents[1]
+    processes = [
+        subprocess.Popen([sys.executable, "-c", code, str(overlay_path), f"parallel-{i}"], cwd=cwd, env=env,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for i in range(2)
+    ]
+    outputs = [process.communicate(timeout=30) for process in processes]
+    assert [process.returncode for process in processes] == [0, 0], outputs
+    saved = pd.read_csv(overlay_path, sep=";")
+    assert sorted(saved["batch_id"].tolist()) == ["parallel-0", "parallel-1"]
 
 
 @pytest.mark.parametrize("body,status,code", [
@@ -144,6 +203,21 @@ def test_empty_and_foreign_overlay_files_are_ignored(client):
     os.utime(config.OVERLAY, (time.time() + 5, time.time() + 5))
     assert client.get("/api/v1/routes").status_code == 200
     assert _day(client, 7, "2025-10-22") >= 0
+
+
+@pytest.mark.parametrize("contents", ["", "совсем;другие;столбцы\n1;2;3\n"])
+def test_ingest_recovers_empty_or_foreign_overlay_file(client, contents):
+    config.OVERLAY.write_text(contents, encoding="utf-8")
+    assert client.get("/api/v1/health").status_code == 200
+    before = _day(client, 7, "2025-10-27")
+
+    result = post(client, [rec("2025-10-27 08:15:00")], batch_id="recovered-file").json()
+
+    assert result["status"] == "accepted" and result["accepted"] == 1
+    saved = pd.read_csv(config.OVERLAY, sep=";")
+    assert list(saved.columns) == ["batch_id", "route", "date", "hour", "boardings"]
+    assert saved.iloc[0]["batch_id"] == "recovered-file"
+    assert _day(client, 7, "2025-10-27") == before + 1
 
 
 def test_service_starts_with_corrupted_overlay(client):

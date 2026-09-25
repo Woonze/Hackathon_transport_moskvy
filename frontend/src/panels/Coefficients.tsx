@@ -27,8 +27,14 @@ export default function Coefficients({ route }: { route: RouteId }) {
   const [result, setResult] = useState<Adjusted | null>(null)
   const [error, setError] = useState('')
 
-  useEffect(() => { getJson<Presets>('/api/v1/factors').then(setPresets).catch(() => undefined) }, [])
-  useEffect(() => { getJson<Regime>('/api/v1/regime').then(setRegime).catch(() => undefined) }, [])
+  useEffect(() => {
+    const controller = new AbortController()
+    getJson<Presets>('/api/v1/factors', controller.signal)
+      .then(setPresets)
+      .catch((e: Error) => { if (e.name !== 'AbortError') setError(e.message) })
+    getJson<Regime>('/api/v1/regime', controller.signal).then(setRegime).catch(() => undefined)
+    return () => controller.abort()
+  }, [])
 
   const days = lastDay(2025, month)
   useEffect(() => { getJson<WeatherInfo>(`/api/v1/weather?start=2025-${pad(month)}-01&end=2025-${pad(month)}-${pad(days)}`).then(setWeatherInfo).catch(() => setWeatherInfo(null)) }, [month, days])
@@ -41,8 +47,12 @@ export default function Coefficients({ route }: { route: RouteId }) {
   }, [month, days, factors, ruleOn, rule, route, calendar, regimeOn, weatherOn]), 300)
 
   useEffect(() => {
+    const controller = new AbortController()
     setError('')
-    postJson<Adjusted>('/api/v1/forecast/adjusted', JSON.parse(body)).then(setResult).catch((e: Error) => setError(e.message))
+    postJson<Adjusted>('/api/v1/forecast/adjusted', JSON.parse(body), controller.signal)
+      .then(setResult)
+      .catch((e: Error) => { if (e.name !== 'AbortError') setError(e.message) })
+    return () => controller.abort()
   }, [body])
 
   const chart = useMemo(() => {

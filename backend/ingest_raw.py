@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from backend.app import config
+from backend.app.console import configure_console
 from backend.app.services.ingest import REQUIRED, aggregate, normalize
 
 
@@ -72,4 +73,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    configure_console()
     main()

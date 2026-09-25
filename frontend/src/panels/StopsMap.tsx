@@ -12,6 +12,7 @@ type Segment = { direction: number; sequence: number; from: Stop; to: Stop; pass
 type Flow = { route_total: number; method: string; stops: FlowStop[] }
 type Segments = { segments: Segment[]; peak: Segment | null }
 type Series = { name: string; data: { date?: string; hour?: number; passengers: number }[] }
+type RouteSummary = { id: number; historical_total: number; forecast_total: number }
 
 const lerp = (a: number, b: number, t: number) => Math.round(a + (b - a) * t)
 // от синего (мало) к красному (много)
@@ -23,7 +24,7 @@ function Fit({ points, sig }: { points: [number, number][]; sig: string }) {
   return null
 }
 
-export default function StopsMap({ route: dashboardRoute }: { route: RouteId }) {
+export default function StopsMap({ route: dashboardRoute, routeSummaries }: { route: RouteId; routeSummaries: RouteSummary[] }) {
   const [routes, setRoutes] = useState<number[]>([])
   const [route, setRoute] = useState(7)
   const [direction, setDirection] = useState(0)
@@ -38,25 +39,36 @@ export default function StopsMap({ route: dashboardRoute }: { route: RouteId }) 
   const debounced = useDebounced(useMemo(() => `${route}|${date}|${hours[0]}|${hours[1]}`, [route, date, hours]), 250)
 
   useEffect(() => {
-    getJson<{ routes: number[] }>('/api/v1/stops').then((r) => { setRoutes(r.routes); setRoute((cur) => (r.routes.includes(cur) ? cur : r.routes[0])) }).catch((e: Error) => setError(e.message))
+    const controller = new AbortController()
+    getJson<{ routes: number[] }>('/api/v1/stops', controller.signal)
+      .then((r) => { setRoutes(r.routes); setRoute((cur) => (r.routes.includes(cur) ? cur : r.routes[0])) })
+      .catch((e: Error) => { if (e.name !== 'AbortError') setError(e.message) })
+    return () => controller.abort()
   }, [])
   useEffect(() => { if (dashboardRoute !== 'all' && routes.includes(dashboardRoute)) setRoute(dashboardRoute) }, [dashboardRoute, routes])
 
   useEffect(() => {
+    const controller = new AbortController()
     const [r, d, hf, ht] = debounced.split('|')
     const q = `route=${r}&start=${d}&end=${d}&hour_from=${hf}&hour_to=${ht}`
-    setError(''); setSelected(null)
-    Promise.all([getJson<Flow>(`/api/v1/stops/flow?${q}`), getJson<Segments>(`/api/v1/stops/segments?${q}`)])
+    setError(''); setSelected(null); setFlow(null); setSegs(null)
+    Promise.all([getJson<Flow>(`/api/v1/stops/flow?${q}`, controller.signal), getJson<Segments>(`/api/v1/stops/segments?${q}`, controller.signal)])
       .then(([f, s]) => { setFlow(f); setSegs(s) })
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => { if (e.name !== 'AbortError') setError(e.message) })
+    return () => controller.abort()
   }, [debounced])
 
   useEffect(() => {
     if (!selected) { setSeries(null); return }
+    const controller = new AbortController()
     const [y, m] = date.split('-').map(Number)
     const range = mode === 'hour' ? `start=${date}&end=${date}&granularity=hour` : `start=${y}-${pad(m)}-01&end=${y}-${pad(m)}-${pad(lastDay(y, m))}&granularity=day`
-    getJson<Series>(`/api/v1/stops/${selected.stop_id}/series?${range}`).then(setSeries).catch((e: Error) => setError(e.message))
-  }, [selected, date, mode])
+    setSeries(null)
+    getJson<Series>(`/api/v1/stops/${selected.stop_id}/series?${range}&route=${route}`, controller.signal)
+      .then(setSeries)
+      .catch((e: Error) => { if (e.name !== 'AbortError') setError(e.message) })
+    return () => controller.abort()
+  }, [selected, date, mode, route])
 
   const stops = useMemo(() => (flow?.stops ?? []).filter((s) => s.direction === direction), [flow, direction])
   const segments = useMemo(() => (segs?.segments ?? []).filter((s) => s.direction === direction), [segs, direction])
@@ -65,6 +77,7 @@ export default function StopsMap({ route: dashboardRoute }: { route: RouteId }) 
   const points = useMemo(() => stops.map((s) => [s.lat, s.lon] as [number, number]), [stops])
   const top = useMemo(() => [...stops].sort((a, b) => b.boardings - a.boardings).slice(0, 6), [stops])
   const directions = useMemo(() => [...new Set((flow?.stops ?? []).map((s) => s.direction))].sort(), [flow])
+  const selectedRouteHasNoHistory = routeSummaries.find((item) => item.id === route)?.historical_total === 0
   const chart = (series?.data ?? []).map((p) => ({ label: p.hour !== undefined ? `${pad(p.hour)}:00` : (p.date ?? '').slice(8), passengers: p.passengers }))
   const peak = useMemo(() => segments.reduce<Segment | null>((best, s) => (!best || s.passengers > best.passengers ? s : best), null), [segments])
 
@@ -82,6 +95,7 @@ export default function StopsMap({ route: dashboardRoute }: { route: RouteId }) 
           <label className="x-field">Час по<select value={hours[1]} onChange={(e) => setHours([Math.min(hours[0], Number(e.target.value)), Number(e.target.value)])}>{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{pad(h)}:59</option>)}</select></label>
           {flow && <div className="x-kpis" style={{ margin: 0 }}><div><b>{fmt(flow.route_total)}</b><span>посадок на маршруте за выбранное время</span></div></div>}
         </div>
+        {selectedRouteHasNoHistory && <div className="info-banner" role="status">Для маршрута {route} в истории нет наблюдений. Нулевые значения остановочной оценки не означают подтверждённое отсутствие пассажиров.</div>}
         {error && <div className="x-error">{error}</div>}
         <div className="x-split">
           <div>

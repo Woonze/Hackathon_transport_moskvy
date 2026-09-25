@@ -45,6 +45,7 @@ def segments(request: Request, route: int = _ROUTE, kind: Kind = _KIND, start: d
 
 @router.get("/{stop_id}/series", summary="Оценка динамики посадок на остановке", responses=_ERR)
 def stop_series(request: Request, stop_id: str, kind: Kind = _KIND, start: date | None = None, end: date | None = None,
-                granularity: Granularity = Query(Granularity.day)):
+                granularity: Granularity = Query(Granularity.day),
+                route: int | None = Query(None, description="Ограничить маршрутом; без значения — все маршруты остановки")):
     s, e = _period(kind, start, end, request)
-    return ORJSONResponse(svc.stop_series(request.app.state.store, kind, stop_id, s, e, granularity))
+    return ORJSONResponse(svc.stop_series(request.app.state.store, kind, stop_id, s, e, granularity, route))

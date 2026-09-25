@@ -16,6 +16,7 @@ import pandas as pd
 
 from analysis import external_effects as E
 from analysis import wape_experiments as W
+from backend.app.console import configure_console
 
 ROOT = E.ROOT
 OUT = ROOT / "artifacts" / "candidates"
@@ -72,4 +73,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    configure_console()
     main()

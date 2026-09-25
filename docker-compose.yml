@@ -4,11 +4,11 @@ services:
     build: .
     image: moskvy-tram-forecast
     ports:
-      - "${TRAM_PORT:-8000}:8000"
+      - "${TRAM_BIND:-127.0.0.1}:${TRAM_PORT:-8000}:8000"
     environment:
       # Принятые через API валидации хранятся на томе и переживают пересоздание контейнера
       INGEST_FILE: /data/ingested.csv
-      # Пусто — приём данных открыт (только для разработки). Для публичного сервера задайте ключ: INGEST_API_KEY=... docker compose up
+      # Для публичного сервера задайте INGEST_API_KEY и TRAM_BIND=0.0.0.0.
       INGEST_API_KEY: ${INGEST_API_KEY:-}
     volumes:
       - tram-data:/data

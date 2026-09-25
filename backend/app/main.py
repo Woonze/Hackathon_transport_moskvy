@@ -41,6 +41,21 @@ def create_app() -> FastAPI:
     )
 
     @app.middleware("http")
+    async def no_cache_frontend_entry(request: Request, call_next):
+        if request.url.path == "/" or request.url.path.endswith(".html"):
+            # A rebuilt frontend can have the same index size and filesystem timestamp
+            # inside a replacement container. Never let a validator reuse stale asset names.
+            request.scope["headers"] = [
+                (name, value)
+                for name, value in request.scope["headers"]
+                if name.lower() not in (b"if-none-match", b"if-modified-since")
+            ]
+            response = await call_next(request)
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        return await call_next(request)
+
+    @app.middleware("http")
     async def timing(request: Request, call_next):
         started = time.perf_counter()
         response = await call_next(request)

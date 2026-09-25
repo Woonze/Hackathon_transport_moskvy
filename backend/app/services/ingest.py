@@ -46,14 +46,22 @@ def process(records: list[dict], batch_id: str | None, store) -> dict:
     missing = [c for c in REQUIRED if c not in df.columns]
     if missing:
         raise ApiError(422, f"В записях нет обязательных полей: {', '.join(missing)}", "missing_fields")
-    batch_id = batch_id or hashlib.sha256(orjson.dumps(records, option=orjson.OPT_SORT_KEYS)).hexdigest()[:32]
+    if batch_id is None:
+        # A retry can arrive with rows in a different order. Hash the canonical
+        # record set (keeping duplicates) so ordering alone cannot double count it.
+        canonical_records = sorted(orjson.dumps(record, option=orjson.OPT_SORT_KEYS) for record in records)
+        batch_id = hashlib.sha256(b"\n".join(canonical_records)).hexdigest()[:32]
 
     duplicates = 0
     if {"device_no", "tran_no"} <= set(df.columns):
         key = df["device_no"].notna() & df["tran_no"].notna()
-        dup = key & df.duplicated(["device_no", "tran_no"])
-        duplicates = int(dup.sum())
-        df = df[~dup]
+        successful = pd.to_numeric(df["validation_result"], errors="coerce") == 1
+        eligible = df.loc[key & successful]
+        duplicate_ids = eligible.loc[eligible.duplicated(["device_no", "tran_no"])].index
+        duplicates = len(duplicate_ids)
+        # A failed attempt must not win the deduplication race against the
+        # successful validation for the same transaction in this batch.
+        df = df.drop(index=duplicate_ids)
 
     boardings, stats = normalize(df)
     known = boardings["route"].isin(store.routes)
