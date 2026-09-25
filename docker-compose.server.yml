@@ -7,7 +7,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Create the private .env first}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks: [database]
+    networks:
+      database:
+        aliases: [tram-database]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -22,7 +24,7 @@ services:
         VITE_BASE: /tram/
         VITE_API_URL: /tram
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@tram-database:5432/${POSTGRES_DB}
       AUTH_USERNAME: ${AUTH_USERNAME:?Create the private .env first}
       AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:?Create the private .env first}
       AUTH_COOKIE_SECURE: "true"
