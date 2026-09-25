@@ -1,0 +1,26 @@
+.x-section{margin-bottom:14px;min-width:0}
+.x-panel{padding:16px 18px;min-width:0;overflow:hidden}
+.x-controls{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin-bottom:12px}
+.x-field{display:flex;flex-direction:column;gap:4px;font-size:10px;color:#7c8799;font-weight:600;letter-spacing:.02em}
+.x-field select,.x-field input[type=date],.x-field input[type=number]{border:1px solid #e5e9f0;background:#fff;border-radius:8px;padding:7px 9px;font-size:11px;color:#29354a}
+.x-field input[type=range]{width:150px;accent-color:#4f75f3}
+.x-field b{color:#29354a;font-weight:700}
+.x-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:8px 0 12px}
+.x-kpis div{background:#f7f9fd;border-radius:9px;padding:9px 11px}
+.x-kpis b{display:block;font-family:Manrope,sans-serif;font-size:18px;color:#29354a}
+.x-kpis span{font-size:9px;color:#8c95a7}
+.x-kpis .up{color:#00a78b}.x-kpis .down{color:#e65f73}
+.x-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;font-size:10px;color:#8c95a7}
+.x-chip{border:1px solid #e5e9f0;background:#fff;border-radius:999px;padding:4px 10px;font-size:10px;color:#556175;cursor:pointer}
+.x-chip:hover{border-color:#4f75f3;color:#4f75f3}
+.x-note{background:#f0f4ff;color:#4b5a7a;border-radius:8px;padding:8px 11px;font-size:10px;line-height:1.5;margin:8px 0}
+.x-error{background:#fff1f3;color:#c0364b;border-radius:8px;padding:8px 11px;font-size:11px;margin:8px 0}
+.x-chart{height:250px}
+.x-map{height:460px;max-width:100%;border-radius:10px;overflow:hidden;position:relative}
+.x-split{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px}
+@media (max-width:1000px){.x-split{grid-template-columns:minmax(0,1fr)}}
+.x-legend{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:9px;color:#8c95a7;margin:8px 0}
+.x-gradient{width:120px;height:8px;border-radius:4px;background:linear-gradient(90deg,#4d74ef,#e65f73)}
+.x-check{display:flex;gap:6px;align-items:center;font-size:11px;color:#556175;padding-bottom:6px}
+.x-empty{color:#9aa3b2;font-size:11px;padding:24px 0;text-align:center}
+.x-stop-title{font-family:Manrope,sans-serif;font-size:12px;font-weight:800;color:#29354a;margin:2px 0 2px}
