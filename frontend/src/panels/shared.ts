@@ -27,7 +27,7 @@ export function useDebounced<T>(value: T, ms = 250): T {
 export const lastDay = (year: number, month: number) => new Date(year, month, 0).getDate()
 export const pad = (n: number) => String(n).padStart(2, '0')
 
-export type LiveEvent = { version: string; history_end: string; ingested_boardings: number; updated_at: string; worker_pid: number }
+export type LiveEvent = { version: string; history_end: string; ingested_boardings: number; updated_at: string; worker_pid: number; ml_model: { name: string; version: string; training_rows: number; duration_ms: number; updated_at: string; updates: number; pending_boardings: number; calendar_in_model: boolean } }
 export type LiveState = { status: 'off' | 'connecting' | 'online' | 'offline'; last: LiveEvent | null; events: number; receivedAt: Date | null }
 
 // Подписка на SSE /api/v1/stream: событие update приходит при подключении и при каждом приёме новых валидаций.

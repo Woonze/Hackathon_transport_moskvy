@@ -25,9 +25,12 @@ def multiplier(store: DataStore, corrections: frozenset[str]) -> np.ndarray:
     if "calendar" in corrections:
         if not ext.holidays:
             raise ApiError(422, "Производственный календарь недоступен: запустите python -m analysis.external_effects", "calendar_unavailable")
-        for d in ext.holidays:
-            lo, hi = fc.span(d, d)
-            mult[:, lo:hi, :] *= ext.holiday_factor
+        # The trained model already uses day_type. Applying the measured holiday
+        # factor again would double-count the same effect in scenario/export APIs.
+        if not store.ml_status.get("calendar_in_model", False):
+            for d in ext.holidays:
+                lo, hi = fc.span(d, d)
+                mult[:, lo:hi, :] *= ext.holiday_factor
     if "regime" in corrections:
         for cell in store.regime:
             ri = fc.route_index.get(cell["route"])

@@ -75,6 +75,14 @@ def test_forecast_weather_correction_hits_only_flagged_days(client):
     assert abs(w["2025-11-15"] - base["2025-11-15"] * factor) <= 12
 
 
+def test_calendar_is_not_applied_twice_to_ml_forecast(client):
+    health = client.get("/api/v1/health").json()
+    assert health["ml_model"]["calendar_in_model"] is True
+    base = day(client, "/api/v1/forecast?route=7&start=2025-11-03&end=2025-11-04")
+    corrected = day(client, "/api/v1/forecast?route=7&start=2025-11-03&end=2025-11-04&corrections=calendar")
+    assert corrected == base
+
+
 def test_corrections_equal_adjusted_endpoint(client):
     query = "/api/v1/forecast?route=7&granularity=day&corrections=calendar,regime,weather"
     corrected = day(client, query)

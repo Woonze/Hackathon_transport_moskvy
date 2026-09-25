@@ -114,7 +114,7 @@ export default function StopsMap({ route: dashboardRoute, routeSummaries }: { ro
         {liveOn && (
           <div className={`x-live x-live-${live.status}`} role="status">
             <span className="x-live-dot" />
-            {live.status === 'online' && live.last ? <>Онлайн · данные по {live.last.history_end.split('-').reverse().join('.')} · принято посадок: {fmt(live.last.ingested_boardings)} · обновлений: {live.events}{live.receivedAt ? ` · ${live.receivedAt.toLocaleTimeString('ru-RU')}` : ''}</>
+              {live.status === 'online' && live.last ? <>Онлайн · данные по {live.last.history_end.split('-').reverse().join('.')} · принято посадок: {fmt(live.last.ingested_boardings)} · ждут завершения дня: {fmt(live.last.ml_model.pending_boardings)} · ML переобучений: {live.last.ml_model.updates} ({fmt(live.last.ml_model.training_rows)} строк; {fmt(live.last.ml_model.duration_ms)} мс) · событий потока: {live.events}{live.receivedAt ? ` · ${live.receivedAt.toLocaleTimeString('ru-RU')}` : ''}</>
               : live.status === 'offline' ? 'Нет связи с потоком, переподключаюсь…' : 'Подключаюсь к потоку…'}
           </div>
         )}

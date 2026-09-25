@@ -11,6 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY backend/ ./backend/
+COPY model/ ./model/
 COPY dataset/labels/ ./dataset/labels/
 COPY artifacts/routes.geojson ./artifacts/routes.geojson
 COPY artifacts/stops.json ./artifacts/stops.json

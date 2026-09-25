@@ -103,7 +103,7 @@ class AdjustRequest(BaseModel):
     granularity: Granularity = Granularity.day
     factors: Factors = Factors()
     rules: list[Rule] = Field(default_factory=list, max_length=20)
-    calendar: bool = Field(False, description="Учесть производственный календарь РФ: праздничные будни умножаются на измеренный коэффициент")
+    calendar: bool = Field(False, description="Производственный календарь РФ уже учтён в обученной ML-модели; дополнительный множитель к таким прогнозам не применяется")
     regime: bool = Field(False, description="Учесть структурные сдвиги режима «маршрут × день недели» (например, отмена выходных рейсов)")
     weather_auto: bool = Field(False, description="Учесть погоду по архиву Open-Meteo: осадки и снегопад умножаются на измеренные коэффициенты")
 
@@ -113,3 +113,4 @@ class IngestRequest(BaseModel):
 
     records: list[dict] = Field(min_length=1, max_length=config.INGEST_MAX_RECORDS)
     batch_id: str | None = Field(None, min_length=1, max_length=64, pattern=r"^[\w.\-]+$", description="Ключ идемпотентности; по умолчанию — хеш содержимого")
+    complete: bool = Field(False, description="Записи завершают все даты пакета: остальные часы этих дат считаются нулевыми при обучении ML")

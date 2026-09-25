@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 
 import numpy as np
 import pandas as pd
 
-
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from model.forecaster import fit_predict
+
 DATA = ROOT / "dataset"
 SUBMISSION_TEMPLATE = DATA / "test_submission.csv"
 TRAIN_LABELS = DATA / "labels" / "labels_day_train.csv"
@@ -61,16 +66,32 @@ def predict_profile(history: pd.DataFrame, target: pd.DataFrame, calibration: fl
     return out[["route", "date", "hour", "prediction"]]
 
 
-def backtest(history: pd.DataFrame) -> tuple[float, float]:
-    """Hold out Sep-Oct and mimic the final two-month forecast horizon."""
-    cutoff = pd.Timestamp("2025-09-01")
-    observed = history[history["date"] >= cutoff].copy()
-    routes = sorted(history["route"].astype(int).unique())
-    days = pd.date_range(cutoff, "2025-10-31", freq="D")
+def load_calendar() -> dict:
+    path = ROOT / "artifacts" / "external" / "calendar_2025.csv"
+    if not path.exists():
+        return {}
+    frame = pd.read_csv(path, parse_dates=["date"])
+    return {d.date(): kind for d, kind in zip(frame.date, frame.day_type)}
+
+
+def predict_ml(history: pd.DataFrame, target: pd.DataFrame) -> pd.DataFrame:
+    routes = sorted(pd.read_csv(SUBMISSION_TEMPLATE, sep=";").route.unique().astype(int))
+    fitted = fit_predict(history, target, routes, load_calendar())
+    return fitted.predictions
+
+
+def backtest(history: pd.DataFrame, model_name: str = "ml", start="2025-09-01", end="2025-10-31") -> tuple[float, float]:
+    """Train strictly before the holdout and score every route×date×hour cell."""
+    cutoff = pd.Timestamp(start)
+    end = pd.Timestamp(end)
+    observed = history[(history["date"] >= cutoff) & (history["date"] <= end)].copy()
+    routes = sorted(pd.read_csv(SUBMISSION_TEMPLATE, sep=";").route.unique().astype(int))
+    days = pd.date_range(cutoff, end, freq="D")
     target = pd.MultiIndex.from_product(
         [routes, days, range(24)], names=["route", "date", "hour"]
     ).to_frame(index=False)
-    predicted = predict_profile(history[history["date"] < cutoff], target)
+    train = history[history["date"] < cutoff]
+    predicted = predict_ml(train, target) if model_name == "ml" else predict_profile(train, target, calibration=1.0)
     actual = target.merge(
         observed.groupby(["route", "date", "hour"], as_index=False)["boardings"].sum(),
         on=["route", "date", "hour"], how="left",
@@ -81,24 +102,49 @@ def backtest(history: pd.DataFrame) -> tuple[float, float]:
     return wape, max(0.0, 1.0 - wape)
 
 
+def rolling_backtest(history: pd.DataFrame, model_name: str = "ml") -> list[tuple[str, float, float]]:
+    """Три независимых двухмесячных окна и дополнительный пересекающийся октябрь."""
+    windows = [
+        ("май–июнь", "2025-05-01", "2025-06-30"),
+        ("июль–август", "2025-07-01", "2025-08-31"),
+        ("сентябрь–октябрь", "2025-09-01", "2025-10-31"),
+        ("октябрь", "2025-10-01", "2025-10-31"),
+    ]
+    results = []
+    for name, start, end in windows:
+        wape, score = backtest(history, model_name, start, end)
+        results.append((name, wape, score))
+    return results
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--backtest", action="store_true", help="Evaluate Sep-Oct holdout")
-    parser.add_argument("--calibration", type=float, default=CALIBRATION)
+    parser.add_argument("--backtest", action="store_true", help="Evaluate the Sep-Oct holdout")
+    parser.add_argument("--rolling-backtest", action="store_true", help="Evaluate three disjoint windows and supplemental October")
+    parser.add_argument("--model", choices=("ml", "profile"), default="ml", help="ml = trained HistGradientBoosting model; profile = previous baseline")
+    parser.add_argument("--calibration", type=float, default=CALIBRATION, help="Used only with --model profile")
     args = parser.parse_args()
 
     history = load_history()
     template = pd.read_csv(SUBMISSION_TEMPLATE, sep=";")
     if args.backtest:
-        wape, score = backtest(history)
-        print(f"Sep-Oct WAPE: {wape:.4f}; WAPE-score: {score:.4f}")
+        wape, score = backtest(history, args.model)
+        print(f"Sep-Oct {args.model} WAPE: {wape:.4f}; WAPE-score: {score:.4f}")
+    if args.rolling_backtest:
+        results = rolling_backtest(history, args.model)
+        for name, wape, score in results:
+            print(f"{name:<20} WAPE: {wape:.4f}; WAPE-score: {score:.4f}")
+        print(f"Средний score по трём непересекающимся окнам: {np.mean([row[2] for row in results[:3]]):.4f}")
 
-    submission = predict_profile(history, template, calibration=args.calibration)
+    submission = predict_ml(history, template) if args.model == "ml" else predict_profile(history, template, calibration=args.calibration)
     submission["date"] = submission["date"].dt.strftime("%Y-%m-%d")
     submission.to_csv(SUBMISSION_PATH, sep=";", index=False, encoding="utf-8")
     submission.to_csv(FORECAST_PATH, sep=";", index=False, encoding="utf-8")
     print(f"Saved {len(submission):,} predictions to {SUBMISSION_PATH}")
-    print(f"Calibration: {args.calibration:.3f}; predicted boardings: {submission.prediction.sum():,}")
+    if args.model == "ml":
+        print("Model: HistGradientBoostingRegressor; predicted boardings:", f"{submission.prediction.sum():,}")
+    else:
+        print(f"Model: weekday profile; calibration {args.calibration:.3f}; predicted boardings: {submission.prediction.sum():,}")
 
 
 if __name__ == "__main__":
