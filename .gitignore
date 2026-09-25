@@ -4,6 +4,8 @@ frontend/dist/
 __pycache__/
 *.py[cod]
 .env
+.env.*
+!.env.example
 .git
 
 # Keep only the compact source data required to rebuild the model and map.

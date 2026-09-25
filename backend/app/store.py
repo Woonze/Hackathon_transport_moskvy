@@ -43,7 +43,8 @@ class Series:
 
 
 class DataStore:
-    def __init__(self) -> None:
+    def __init__(self, database=None) -> None:
+        self.database = database
         self.cache: dict = {}
         self._lock = threading.Lock()
         self._stamp: object = object()
@@ -70,14 +71,14 @@ class DataStore:
 
     def refresh(self, force: bool = False) -> bool:
         """Пересобирает историю, если файл принятых данных изменился (в т.ч. другим воркером)."""
-        stamp = overlay.stamp()
+        stamp = self.database.ingest_revision() if self.database else overlay.stamp()
         if not force and stamp == self._stamp:
             return False
         with self._lock:
             if not force and stamp == self._stamp:
                 return False
             try:
-                self._apply(overlay.read())
+                self._apply(self.database.read_ingested() if self.database else overlay.read())
             except Exception:  # повреждённый файл не должен ронять ни запросы, ни запуск сервиса
                 log.exception("Не удалось применить принятые данные, оставляем прежнее состояние")
                 if not hasattr(self, "history"):

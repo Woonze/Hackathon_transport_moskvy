@@ -40,7 +40,6 @@ def process(records: list[dict], batch_id: str | None, store, complete: bool = F
 
     from .. import config
     from ..errors import ApiError
-    from . import overlay
 
     df = pd.DataFrame.from_records(records)
     missing = [c for c in REQUIRED if c not in df.columns]
@@ -76,7 +75,11 @@ def process(records: list[dict], batch_id: str | None, store, complete: bool = F
     boardings = boardings[known & in_range]
     agg = aggregate(boardings)
 
-    new = overlay.append(batch_id, agg, complete=complete) if len(agg) else True
+    if store.database:
+        new = store.database.append_batch(batch_id, agg, complete=complete)
+    else:
+        from . import overlay
+        new = overlay.append(batch_id, agg, complete=complete) if len(agg) else True
     if new:
         store.refresh()
     return {

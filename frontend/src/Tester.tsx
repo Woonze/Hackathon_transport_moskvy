@@ -432,7 +432,7 @@ function ErrorsTab({ apiKey, guarded }: { apiKey: string; guarded: boolean }) {
 
 const TABS = ['Ряды', 'Экспорт', 'Коэффициенты', 'Год', 'Остановки', 'Диспетчер', 'Приём данных', 'Ошибки'] as const
 
-export default function Tester() {
+export default function Tester({ username, onLogout }: { username: string; onLogout: () => void }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>('Ряды')
   const [routes, setRoutes] = useState<number[]>([])
   const [health, setHealth] = useState<Result | null>(null)
@@ -446,7 +446,7 @@ export default function Tester() {
     <div className="t-root">
       <style>{CSS}</style>
       <header>
-        <h1>Проверка API</h1>
+        <div className="t-line" style={{ justifyContent: 'space-between' }}><h1>Проверка API</h1><div className="t-line"><span className="t-muted">{username}</span><button className="ghost" onClick={onLogout}>Выйти</button></div></div>
         <div className="t-muted">
           {h ? <>сервис v{h.version} · история {h.history_period[0]} — {h.history_period[1]} · прогноз {h.forecast_period[0]} — {h.forecast_period[1]} · маршрутов {h.routes}</>
              : health ? <span className="t-error">Сервис недоступен (статус {health.status || 'нет ответа'})</span> : 'Подключение…'}
@@ -472,6 +472,7 @@ export default function Tester() {
 const CSS = `
 .t-root{max-width:1100px;margin:0 auto;padding:20px 16px 60px;color:#20283a;font-size:14px}
 .t-root h1{margin:0 0 4px;font-size:24px}.t-root h3{margin:22px 0 6px;font-size:15px}
+.t-root header button.ghost{border:1px solid #dfe4ee;background:#fff;color:#51617b;border-radius:8px;padding:7px 13px}
 .t-root header nav{display:flex;gap:16px;margin:10px 0 14px}.t-root a{color:#2e6bff;text-decoration:none}
 .t-muted{color:#8c95a7;font-size:12px}.t-note{background:#f0f4ff;border-radius:8px;padding:8px 12px;margin:10px 0}
 .t-tabs{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid #edf0f5;padding-bottom:10px;margin-bottom:14px}

@@ -24,6 +24,7 @@ def health(request: Request):
     store = request.app.state.store
     return {
         "status": "ok",
+        "database": "postgresql" if request.app.state.database else "local-file",
         "version": config.API_VERSION,
         "worker_pid": os.getpid(),  # какой воркер ответил: нужно для диагностики нескольких воркеров
         "forecast_rows": store.forecast_rows,

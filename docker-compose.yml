@@ -1,5 +1,20 @@
 # Запуск: docker compose up --build   → http://localhost:8000 (порт можно сменить: TRAM_PORT=8010 docker compose up)
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Run backend/setup_env.py to create .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Run backend/setup_env.py to create .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run backend/setup_env.py to create .env}
+    volumes:
+      - tram-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
   tram:
     build: .
     image: moskvy-tram-forecast
@@ -10,13 +25,19 @@ services:
       INGEST_FILE: /data/ingested.csv
       # Для публичного сервера задайте INGEST_API_KEY и TRAM_BIND=0.0.0.0.
       INGEST_API_KEY: ${INGEST_API_KEY:-}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AUTH_USERNAME: ${AUTH_USERNAME:?Run backend/setup_env.py to create .env}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:?Run backend/setup_env.py to create .env}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      AUTH_COOKIE_PATH: ${AUTH_COOKIE_PATH:-/}
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - tram-data:/data
     # Профиль из требований: один контейнер 2 vCPU / 2 ГБ RAM
     cpus: 2
     mem_limit: 2g
-    # Сеть bridge по умолчанию: пользовательская сеть compose на Docker Desktop (macOS) режет пропускную способность больших ответов в ≈5 раз
-    network_mode: bridge
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
@@ -27,3 +48,4 @@ services:
 
 volumes:
   tram-data:
+  tram-postgres:

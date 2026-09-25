@@ -37,6 +37,15 @@ INGEST_API_KEY = os.getenv("INGEST_API_KEY") or None
 INGEST_MAX_RECORDS = 100_000
 INGEST_MAX_DATE = date(2026, 12, 31)
 
+# PostgreSQL is mandatory in the production Compose stack. A missing URL keeps
+# direct, local test runs on the legacy file adapter.
+DATABASE_URL = os.getenv("DATABASE_URL") or None
+AUTH_USERNAME = os.getenv("AUTH_USERNAME", "fotur")
+AUTH_PASSWORD_HASH = os.getenv("AUTH_PASSWORD_HASH") or None
+AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").lower() in {"1", "true", "yes"}
+AUTH_COOKIE_PATH = os.getenv("AUTH_COOKIE_PATH", "/")
+AUTH_SESSION_HOURS = int(os.getenv("AUTH_SESSION_HOURS", "12"))
+
 API_VERSION = "1.3.0"
 LIVE_POLL_SECONDS = float(os.getenv("LIVE_POLL_SECONDS", "1"))  # как часто поток проверяет, не принял ли данные другой воркер
 LIVE_HEARTBEAT_SECONDS = 15

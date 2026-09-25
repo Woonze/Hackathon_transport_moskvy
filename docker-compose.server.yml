@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Create the private .env first}
+      POSTGRES_USER: ${POSTGRES_USER:?Create the private .env first}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Create the private .env first}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [database]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  tram:
+    build:
+      context: .
+      args:
+        VITE_BASE: /tram/
+        VITE_API_URL: /tram
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AUTH_USERNAME: ${AUTH_USERNAME:?Create the private .env first}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:?Create the private .env first}
+      AUTH_COOKIE_SECURE: "true"
+      AUTH_COOKIE_PATH: /tram
+      APP_ROOT_PATH: /tram
+      INGEST_FILE: /data/ingested.csv
+      CORS_ORIGINS: https://pigmentmusic.world
+    volumes:
+      - ingest_data:/data
+    networks:
+      database: {}
+      edge:
+        aliases: [tram-app]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    cpus: 2.0
+    mem_limit: 2g
+
+volumes:
+  postgres_data:
+  ingest_data:
+
+networks:
+  database:
+    internal: true
+  edge:
+    external: true
+    name: pigment_default
