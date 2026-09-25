@@ -9,6 +9,8 @@ type Presets = { disclaimer: string; weather: Preset[]; event: Preset[]; season:
 type Point = { route: number; date: string; passengers: number; base: number }
 type Adjusted = { summary: { base_total: number; adjusted_total: number; delta: number; delta_pct: number | null; global_multiplier: number }; data: Point[] }
 type Factors = { weather: number; event: number; season: number }
+type Regime = { weeks: number; cells: { route: number; weekday_name: string; factor: number; recent_mean: number; history_mean: number }[] }
+type WeatherInfo = { rain_factor: number | null; snow_factor: number | null; days: { date: string; factor: number; flags: string[] }[] }
 const TITLES: Record<keyof Factors, string> = { weather: 'Погода', event: 'Событие', season: 'Сезон' }
 
 export default function Coefficients({ route }: { route: RouteId }) {
@@ -16,21 +18,27 @@ export default function Coefficients({ route }: { route: RouteId }) {
   const [factors, setFactors] = useState<Factors>({ weather: 1, event: 1, season: 1 })
   const [ruleOn, setRuleOn] = useState(false)
   const [calendar, setCalendar] = useState(false)
+  const [regimeOn, setRegimeOn] = useState(false)
+  const [weatherOn, setWeatherOn] = useState(false)
+  const [regime, setRegime] = useState<Regime | null>(null)
+  const [weatherInfo, setWeatherInfo] = useState<WeatherInfo | null>(null)
   const [rule, setRule] = useState({ from: 25, to: 31, hourFrom: 0, hourTo: 23, factor: 0.8 })
   const [presets, setPresets] = useState<Presets | null>(null)
   const [result, setResult] = useState<Adjusted | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => { getJson<Presets>('/api/v1/factors').then(setPresets).catch(() => undefined) }, [])
+  useEffect(() => { getJson<Regime>('/api/v1/regime').then(setRegime).catch(() => undefined) }, [])
 
   const days = lastDay(2025, month)
+  useEffect(() => { getJson<WeatherInfo>(`/api/v1/weather?start=2025-${pad(month)}-01&end=2025-${pad(month)}-${pad(days)}`).then(setWeatherInfo).catch(() => setWeatherInfo(null)) }, [month, days])
   const body = useDebounced(useMemo(() => {
     const ym = `2025-${pad(month)}`
-    const b: Record<string, unknown> = { start: `${ym}-01`, end: `${ym}-${pad(days)}`, granularity: 'day', factors, rules: [], calendar }
+    const b: Record<string, unknown> = { start: `${ym}-01`, end: `${ym}-${pad(days)}`, granularity: 'day', factors, rules: [], calendar, regime: regimeOn, weather_auto: weatherOn }
     if (route !== 'all') b.route = route
     if (ruleOn) b.rules = [{ start: `${ym}-${pad(Math.min(rule.from, days))}`, end: `${ym}-${pad(Math.min(rule.to, days))}`, factor: rule.factor, hour_from: rule.hourFrom, hour_to: rule.hourTo, label: 'из интерфейса' }]
     return JSON.stringify(b)
-  }, [month, days, factors, ruleOn, rule, route, calendar]), 300)
+  }, [month, days, factors, ruleOn, rule, route, calendar, regimeOn, weatherOn]), 300)
 
   useEffect(() => {
     setError('')
@@ -48,7 +56,7 @@ export default function Coefficients({ route }: { route: RouteId }) {
   }, [result])
 
   const s = result?.summary
-  const changed = factors.weather !== 1 || factors.event !== 1 || factors.season !== 1 || ruleOn || calendar
+  const changed = factors.weather !== 1 || factors.event !== 1 || factors.season !== 1 || ruleOn || calendar || regimeOn || weatherOn
   const slider = (k: keyof Factors) => (
     <label className="x-field" key={k}>{TITLES[k]}: <b>×{factors[k].toFixed(2)}</b>
       <input type="range" min={0.5} max={1.5} step={0.05} value={factors[k]} onChange={(e) => setFactors({ ...factors, [k]: Number(e.target.value) })} />
@@ -64,7 +72,7 @@ export default function Coefficients({ route }: { route: RouteId }) {
         </div>
         <div className="x-controls">
           {(Object.keys(TITLES) as (keyof Factors)[]).map(slider)}
-          <button className="secondary-button" onClick={() => { setFactors({ weather: 1, event: 1, season: 1 }); setRuleOn(false); setCalendar(false) }} disabled={!changed}>Сбросить</button>
+          <button className="secondary-button" onClick={() => { setFactors({ weather: 1, event: 1, season: 1 }); setRuleOn(false); setCalendar(false); setRegimeOn(false); setWeatherOn(false) }} disabled={!changed}>Сбросить</button>
         </div>
         {presets && (
           <div className="x-chips">
@@ -84,6 +92,23 @@ export default function Coefficients({ route }: { route: RouteId }) {
             <span className="panel-subtitle" style={{ margin: 0, paddingBottom: 6 }}>
               Праздничные будни: {presets.calendar.days.map((d) => `${Number(d.slice(8))}.${d.slice(5, 7)}`).join(', ')} — модель считает их обычными днями недели. Измеренный эффект: {((presets.calendar.holiday_factor - 1) * 100).toFixed(1)}%
               {presets.calendar.holiday_effect_ci95 ? ` (95% ДИ ${(presets.calendar.holiday_effect_ci95[0] * 100).toFixed(1)}…${(presets.calendar.holiday_effect_ci95[1] * 100).toFixed(1)}%)` : ''}
+            </span>
+          </div>
+        )}
+        {regime && regime.cells.length > 0 && (
+          <div className="x-controls">
+            <label className="x-check"><input type="checkbox" checked={regimeOn} onChange={(e) => setRegimeOn(e.target.checked)} /> Учесть сдвиги режима маршрутов</label>
+            <span className="panel-subtitle" style={{ margin: 0, paddingBottom: 6 }}>
+              Найдено автоматически (последние {regime.weeks} недель к средней за всю историю): {regime.cells.map((c) => `маршрут ${c.route}, ${c.weekday_name} ×${c.factor.toFixed(2)}`).join('; ')}
+            </span>
+          </div>
+        )}
+        {weatherInfo && (
+          <div className="x-controls">
+            <label className="x-check"><input type="checkbox" checked={weatherOn} onChange={(e) => setWeatherOn(e.target.checked)} /> Учесть погоду по архиву Open-Meteo</label>
+            <span className="panel-subtitle" style={{ margin: 0, paddingBottom: 6 }}>
+              Дней с осадками ≥ 5 мм или снегом ≥ 2 см в этом месяце: {weatherInfo.days.filter((d) => d.factor !== 1).length}
+              {weatherInfo.rain_factor ? ` (осадки ×${weatherInfo.rain_factor.toFixed(3)}, снег ×${weatherInfo.snow_factor?.toFixed(3)})` : ''}. Это фактическая погода из архива, а не прогноз погоды.
             </span>
           </div>
         )}

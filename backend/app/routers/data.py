@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, ORJSONResponse
 
 from .. import config
 from ..schemas import SERIES_DOC, ErrorBody, ExportFormat, Granularity, Kind, RouteInfo, WeekdayAverage
+from ..services import corrections as corr
 from ..services import export as export_service
 from ..services import series
 
@@ -45,8 +46,9 @@ def forecast(
     end: date = Query(config.FORECAST_END, description="Конец периода"),
     route: int | None = Query(None, description="Номер маршрута; без значения — все"),
     granularity: Granularity = Query(Granularity.day, description="day, hour или month"),
+    corrections: str | None = Query(None, description="Поправки через запятую: calendar, regime, weather (по умолчанию прогноз модели без поправок)"),
 ):
-    return _json(series.series_json(request.app.state.store, "forecast", start, end, route, granularity))
+    return _json(series.series_json(request.app.state.store, "forecast", start, end, route, granularity, corr.parse(corrections)))
 
 
 @router.get("/history", summary="История посадок", responses=SERIES_DOC)
@@ -95,8 +97,9 @@ def export(
     end: date | None = Query(None, description="Конец периода; по умолчанию конец доступных данных"),
     route: int | None = Query(None, description="Номер маршрута; без значения — все"),
     granularity: Granularity = Query(Granularity.hour, description="hour, day или month"),
+    corrections: str | None = Query(None, description="Поправки к прогнозу через запятую: calendar, regime, weather"),
 ):
     store = request.app.state.store
     lo, hi = series.bounds(store, kind.value)
-    body, mime, name = export_service.build(store, kind, format, start or lo, end or hi, route, granularity)
+    body, mime, name = export_service.build(store, kind, format, start or lo, end or hi, route, granularity, corr.parse(corrections))
     return Response(body, media_type=mime, headers={"Content-Disposition": f'attachment; filename="{name}"'})

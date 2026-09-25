@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from . import config
-from .services import external, overlay, stopmodel
+from .services import external, overlay, regime, stopmodel
 
 log = logging.getLogger("tram")
 
@@ -99,3 +99,4 @@ class DataStore:
         ]
         self.history_end = last
         self.history = history
+        self.regime = regime.compute(history, self.external.calendar)

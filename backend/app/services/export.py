@@ -8,7 +8,9 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 
 from .. import config
+from ..errors import ApiError
 from ..schemas import ExportFormat, Granularity, Kind
+from . import corrections as corr
 from . import series
 
 _VALUE = {Kind.forecast: ("prediction", "Прогноз посадок"), Kind.history: ("boardings", "Посадки (факт)")}
@@ -25,10 +27,11 @@ def _clip(store, kind: Kind, start: date, end: date) -> tuple[date, date]:
     return max(start, lo), min(end, hi)
 
 
-def filename(store, kind: Kind, fmt: ExportFormat, start: date, end: date, route: int | None, gran: Granularity) -> str:
+def filename(store, kind: Kind, fmt: ExportFormat, start: date, end: date, route: int | None, gran: Granularity, corrections: frozenset = frozenset()) -> str:
     start, end = _clip(store, kind, start, end)
     scope = f"route{route}" if route is not None else "all"
-    return f"tramway_{kind.value}_{start}_{end}_{scope}_{gran.value}.{fmt.value}"
+    extra = "_corr-" + "-".join(sorted(corrections)) if corrections else ""
+    return f"tramway_{kind.value}_{start}_{end}_{scope}_{gran.value}{extra}.{fmt.value}"
 
 
 def _csv(rows: list[dict], columns: list[str], value_col: str) -> bytes:
@@ -63,8 +66,8 @@ def _xlsx(rows: list[dict], columns: list[str], value_label: str, meta: list[tup
     return buf.getvalue()
 
 
-def _build(store, kind: Kind, fmt: ExportFormat, start: date, end: date, route: int | None, gran: Granularity) -> bytes:
-    source = store.forecast if kind is Kind.forecast else store.history
+def _build(store, kind: Kind, fmt: ExportFormat, start: date, end: date, route: int | None, gran: Granularity, corrections: frozenset = frozenset()) -> bytes:
+    source = corr.corrected_series(store, corrections) if kind is Kind.forecast else store.history
     rows = series.rows(store, source, start, end, route, gran)
     period = "month" if gran is Granularity.month else "date"
     columns = ["route", period] + (["hour"] if gran is Granularity.hour else []) + ["passengers"]
@@ -80,13 +83,16 @@ def _build(store, kind: Kind, fmt: ExportFormat, start: date, end: date, route: 
         ("Период", f"{a.isoformat()} — {b.isoformat()}"),
         ("Маршрут", str(route) if route is not None else "все"),
         ("Детализация", {"hour": "по часам", "day": "по дням", "month": "по месяцам"}[gran.value]),
+        ("Поправки", ", ".join(sorted(corrections)) if corrections else "нет (прогноз модели)"),
         ("Строк в выгрузке", str(len(rows))),
         ("Сформировано", datetime.now().strftime("%Y-%m-%d %H:%M")),
     ]
     return _xlsx(rows, columns, label, meta, per_route)
 
 
-def build(store, kind: Kind, fmt: ExportFormat, start: date, end: date, route: int | None, gran: Granularity) -> tuple[bytes, str, str]:
+def build(store, kind: Kind, fmt: ExportFormat, start: date, end: date, route: int | None, gran: Granularity, corrections: frozenset = frozenset()) -> tuple[bytes, str, str]:
     series.validate(store, kind.value, start, end, route, gran, limit_hours=False)
-    body = series.cached(store, ("export", kind, fmt, start, end, route, gran), lambda: _build(store, kind, fmt, start, end, route, gran))
-    return body, _MIME[fmt], filename(store, kind, fmt, start, end, route, gran)
+    if corrections and kind is not Kind.forecast:
+        raise ApiError(422, "Поправки применяются только к прогнозу", "corrections_forecast_only")
+    body = series.cached(store, ("export", kind, fmt, start, end, route, gran, corrections), lambda: _build(store, kind, fmt, start, end, route, gran, corrections))
+    return body, _MIME[fmt], filename(store, kind, fmt, start, end, route, gran, corrections)
