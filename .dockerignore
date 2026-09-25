@@ -1,0 +1,14 @@
+.git
+.gitignore
+dataset/**
+!dataset/labels/
+dataset/labels/**
+!dataset/labels/*.csv
+dataset/spravochniki/
+dataset/train.csv
+dataset/test.csv
+dataset.zip
+frontend/node_modules/
+frontend/dist/
+**/__pycache__/
+**/*.pyc

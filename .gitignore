@@ -1,0 +1,22 @@
+node_modules/
+frontend/dist/
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.git
+
+# Keep only the compact source data required to rebuild the model and map.
+dataset/*
+!dataset/labels/
+dataset/labels/*
+!dataset/labels/labels_day_train.csv
+!dataset/labels/labels_day_test.csv
+!dataset/test_submission.csv
+!dataset/spravochniki/
+dataset/spravochniki/*
+!dataset/spravochniki/Хакатон_справочники_трамвай_10_маршрутов.xlsx
+
+# The root submission is tracked; the duplicate intermediate stays local.
+artifacts/*
+!artifacts/routes.geojson
