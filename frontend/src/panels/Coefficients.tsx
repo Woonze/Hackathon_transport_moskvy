@@ -1,0 +1,129 @@
+import { useEffect, useMemo, useState } from 'react'
+import { CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { fmt, getJson, lastDay, pad, postJson, useDebounced } from './shared'
+import type { RouteId } from './shared'
+import './panels.css'
+
+type Preset = { label: string; value: number; measured?: boolean; ci95?: [number, number]; days?: number }
+type Presets = { disclaimer: string; weather: Preset[]; event: Preset[]; season: Preset[]; sources: { calendar: string; weather: string }; calendar: { holiday_factor: number; holiday_effect_ci95: [number, number] | null; days: string[] } }
+type Point = { route: number; date: string; passengers: number; base: number }
+type Adjusted = { summary: { base_total: number; adjusted_total: number; delta: number; delta_pct: number | null; global_multiplier: number }; data: Point[] }
+type Factors = { weather: number; event: number; season: number }
+const TITLES: Record<keyof Factors, string> = { weather: 'Погода', event: 'Событие', season: 'Сезон' }
+
+export default function Coefficients({ route }: { route: RouteId }) {
+  const [month, setMonth] = useState(12)
+  const [factors, setFactors] = useState<Factors>({ weather: 1, event: 1, season: 1 })
+  const [ruleOn, setRuleOn] = useState(false)
+  const [calendar, setCalendar] = useState(false)
+  const [rule, setRule] = useState({ from: 25, to: 31, hourFrom: 0, hourTo: 23, factor: 0.8 })
+  const [presets, setPresets] = useState<Presets | null>(null)
+  const [result, setResult] = useState<Adjusted | null>(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => { getJson<Presets>('/api/v1/factors').then(setPresets).catch(() => undefined) }, [])
+
+  const days = lastDay(2025, month)
+  const body = useDebounced(useMemo(() => {
+    const ym = `2025-${pad(month)}`
+    const b: Record<string, unknown> = { start: `${ym}-01`, end: `${ym}-${pad(days)}`, granularity: 'day', factors, rules: [], calendar }
+    if (route !== 'all') b.route = route
+    if (ruleOn) b.rules = [{ start: `${ym}-${pad(Math.min(rule.from, days))}`, end: `${ym}-${pad(Math.min(rule.to, days))}`, factor: rule.factor, hour_from: rule.hourFrom, hour_to: rule.hourTo, label: 'из интерфейса' }]
+    return JSON.stringify(b)
+  }, [month, days, factors, ruleOn, rule, route, calendar]), 300)
+
+  useEffect(() => {
+    setError('')
+    postJson<Adjusted>('/api/v1/forecast/adjusted', JSON.parse(body)).then(setResult).catch((e: Error) => setError(e.message))
+  }, [body])
+
+  const chart = useMemo(() => {
+    const byDate = new Map<string, { label: string; base: number; adjusted: number }>()
+    for (const p of result?.data ?? []) {
+      const c = byDate.get(p.date) ?? { label: p.date.slice(8) + '.' + p.date.slice(5, 7), base: 0, adjusted: 0 }
+      c.base += p.base; c.adjusted += p.passengers
+      byDate.set(p.date, c)
+    }
+    return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v)
+  }, [result])
+
+  const s = result?.summary
+  const changed = factors.weather !== 1 || factors.event !== 1 || factors.season !== 1 || ruleOn || calendar
+  const slider = (k: keyof Factors) => (
+    <label className="x-field" key={k}>{TITLES[k]}: <b>×{factors[k].toFixed(2)}</b>
+      <input type="range" min={0.5} max={1.5} step={0.05} value={factors[k]} onChange={(e) => setFactors({ ...factors, [k]: Number(e.target.value) })} />
+    </label>
+  )
+
+  return (
+    <section className="x-section">
+      <article className="panel x-panel">
+        <div className="panel-heading">
+          <div><div className="panel-title">Корректирующие коэффициенты</div><div className="panel-subtitle">Поправка на погоду, событие и сезон — прогноз пересчитывается сразу · {route === 'all' ? 'все маршруты' : `трамвай ${route}`}</div></div>
+          <div className="segmented"><button className={month === 11 ? 'active' : ''} onClick={() => setMonth(11)}>Ноябрь</button><button className={month === 12 ? 'active' : ''} onClick={() => setMonth(12)}>Декабрь</button></div>
+        </div>
+        <div className="x-controls">
+          {(Object.keys(TITLES) as (keyof Factors)[]).map(slider)}
+          <button className="secondary-button" onClick={() => { setFactors({ weather: 1, event: 1, season: 1 }); setRuleOn(false); setCalendar(false) }} disabled={!changed}>Сбросить</button>
+        </div>
+        {presets && (
+          <div className="x-chips">
+            {(Object.keys(TITLES) as (keyof Factors)[]).filter((k) => presets[k].length > 1).map((k) => (
+              <span key={k} className="x-chips">{TITLES[k]}:{presets[k].map((p) => (
+                <button key={p.label} className="x-chip" onClick={() => setFactors({ ...factors, [k]: p.value })}
+                  title={p.measured ? `Измерено на данных 2025: ×${p.value}, 95% ДИ ×${p.ci95?.[0]}–×${p.ci95?.[1]}, ${p.days} дн.` : p.value === 1 ? 'Без поправки' : `×${p.value} — экспертная оценка, не проверялась на данных`}>
+                  {p.measured ? '✓ ' : ''}{p.label}{p.value !== 1 ? ` ×${p.value}` : ''}
+                </button>))}
+              </span>
+            ))}
+          </div>
+        )}
+        {presets && presets.calendar.days.length > 0 && (
+          <div className="x-controls">
+            <label className="x-check"><input type="checkbox" checked={calendar} onChange={(e) => setCalendar(e.target.checked)} /> Учесть производственный календарь РФ</label>
+            <span className="panel-subtitle" style={{ margin: 0, paddingBottom: 6 }}>
+              Праздничные будни: {presets.calendar.days.map((d) => `${Number(d.slice(8))}.${d.slice(5, 7)}`).join(', ')} — модель считает их обычными днями недели. Измеренный эффект: {((presets.calendar.holiday_factor - 1) * 100).toFixed(1)}%
+              {presets.calendar.holiday_effect_ci95 ? ` (95% ДИ ${(presets.calendar.holiday_effect_ci95[0] * 100).toFixed(1)}…${(presets.calendar.holiday_effect_ci95[1] * 100).toFixed(1)}%)` : ''}
+            </span>
+          </div>
+        )}
+        <div className="x-controls">
+          <label className="x-check"><input type="checkbox" checked={ruleOn} onChange={(e) => setRuleOn(e.target.checked)} /> Точечное правило на дни и часы</label>
+          {ruleOn && (
+            <>
+              <label className="x-field">С числа<input type="number" min={1} max={days} value={rule.from} onChange={(e) => setRule({ ...rule, from: Number(e.target.value) })} /></label>
+              <label className="x-field">По число<input type="number" min={1} max={days} value={rule.to} onChange={(e) => setRule({ ...rule, to: Number(e.target.value) })} /></label>
+              <label className="x-field">Час с<input type="number" min={0} max={23} value={rule.hourFrom} onChange={(e) => setRule({ ...rule, hourFrom: Number(e.target.value) })} /></label>
+              <label className="x-field">Час по<input type="number" min={0} max={23} value={rule.hourTo} onChange={(e) => setRule({ ...rule, hourTo: Number(e.target.value) })} /></label>
+              <label className="x-field">Множитель<input type="number" min={0.1} max={3} step={0.05} value={rule.factor} onChange={(e) => setRule({ ...rule, factor: Number(e.target.value) })} /></label>
+            </>
+          )}
+        </div>
+        {error && <div className="x-error">{error}</div>}
+        {s && (
+          <div className="x-kpis">
+            <div><b>{fmt(s.base_total)}</b><span>прогноз модели</span></div>
+            <div><b>{fmt(s.adjusted_total)}</b><span>с коэффициентами</span></div>
+            <div><b className={s.delta >= 0 ? 'up' : 'down'}>{s.delta_pct === null ? '—' : `${s.delta >= 0 ? '+' : ''}${s.delta_pct}%`}</b><span>изменение ({s.delta >= 0 ? '+' : ''}{fmt(s.delta)})</span></div>
+            <div><b>×{s.global_multiplier}</b><span>общий множитель</span></div>
+          </div>
+        )}
+        <div className="x-chart">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chart} margin={{ top: 8, right: 8, left: -6, bottom: 0 }}>
+              <CartesianGrid stroke="#edf0f6" vertical={false} />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#98a1b2', fontSize: 10 }} minTickGap={14} />
+              <YAxis tickLine={false} axisLine={false} tick={{ fill: '#98a1b2', fontSize: 10 }} tickFormatter={(n) => (n >= 1000 ? `${Math.round(n / 1000)}к` : n)} />
+              <Tooltip formatter={(v) => `${fmt(Number(v))} посадок`} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
+              <Legend formatter={(n) => (n === 'base' ? 'Прогноз модели' : 'С коэффициентами')} wrapperStyle={{ fontSize: 11 }} />
+              {(presets?.calendar.days ?? []).filter((d) => Number(d.slice(5, 7)) === month).map((d) => <ReferenceLine key={d} x={`${d.slice(8)}.${d.slice(5, 7)}`} stroke="#f0a339" strokeDasharray="3 3" label={{ value: 'праздник', fontSize: 9, fill: '#c98218', position: 'insideTopLeft' }} />)}
+              <Line type="monotone" dataKey="base" stroke="#a9b6d3" strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="adjusted" stroke="#4f75f3" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        {presets && <div className="x-note">{presets.disclaimer} Источники: <a href={presets.sources.calendar} target="_blank" rel="noreferrer">производственный календарь РФ</a>, <a href={presets.sources.weather} target="_blank" rel="noreferrer">архив погоды Open-Meteo</a>.</div>}
+      </article>
+    </section>
+  )
+}

@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, ArrowDownRight, ArrowUpRight, CalendarDays, ChevronDown, Clock3, MapPin, Menu, Route as RouteIcon, Sparkles, TramFront, Users, Zap } from 'lucide-react'
+import { Activity, ArrowDownRight, FlaskConical, ArrowUpRight, CalendarDays, ChevronDown, Clock3, MapPin, Menu, Route as RouteIcon, Sparkles, TramFront, Users, Zap } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { CircleMarker, GeoJSON, MapContainer, TileLayer, Tooltip as MapTooltip } from 'react-leaflet'
 import type { Feature, FeatureCollection, LineString, MultiLineString } from 'geojson'
 import 'leaflet/dist/leaflet.css'
 import './styles.css'
+import Horizons from './panels/Horizons'
+import Coefficients from './panels/Coefficients'
+import StopsMap from './panels/StopsMap'
 
 type Flow = { route: number; date: string; hour: number; passengers: number }
 type TramRoute = { id: number; name: string; historical_total: number; forecast_total: number }
@@ -80,23 +83,12 @@ function App() {
   const hourlyChart = useMemo(() => hourlyDayRows.map((row) => ({ ...row, label: `${String(row.hour).padStart(2, '0')}:00` })), [hourlyDayRows])
   const routeRanking = useMemo(() => routes.map((item) => ({ ...item, value: visibleForecast.filter((row) => row.route === item.id).reduce((sum, row) => sum + row.passengers, 0) })).sort((a, b) => b.value - a.value), [routes, visibleForecast])
   const mapFeatures = useMemo(() => ({ ...geo, features: (geo.features as RouteFeature[]).filter((feature) => route === 'all' || feature.properties?.route === route) }), [geo, route])
-  const exportCsv = async () => {
-    const start = `2025-${String(month).padStart(2, '0')}-01`
-    const end = `2025-${String(month).padStart(2, '0')}-${String(new Date(2025, month, 0).getDate()).padStart(2, '0')}`
-    const routeQuery = route === 'all' ? '' : `&route=${route}`
-    try {
-      const response = await fetch(`${API}/api/forecast?start=${start}&end=${end}&granularity=hour${routeQuery}`)
-      if (!response.ok) throw new Error('Не удалось получить CSV')
-      const rows = await response.json() as Flow[]
-      const csv = ['route;date;hour;prediction', ...rows.map((row) => `${row.route};${row.date};${row.hour};${row.passengers}`)]
-      const blob = new Blob(['\uFEFF' + csv.join('\n')], { type: 'text/csv;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `tramway_forecast_${month}.csv`
-      link.click()
-      URL.revokeObjectURL(url)
-    } catch (e) { setError((e as Error).message) }
+  const exportFile = (fmt: 'csv' | 'xlsx') => {
+    const q = new URLSearchParams({ kind: 'forecast', format: fmt, granularity: mode === 'days' ? 'day' : 'hour', start: `2025-${String(month).padStart(2, '0')}-01`, end: `2025-${String(month).padStart(2, '0')}-${String(new Date(2025, month, 0).getDate()).padStart(2, '0')}` })
+    if (route !== 'all') q.set('route', String(route))
+    const link = document.createElement('a')
+    link.href = `${API}/api/v1/export?${q}`
+    link.click()
   }
 
   useEffect(() => {
@@ -112,16 +104,17 @@ function App() {
       <button className="nav-item active"><Activity size={18} /><span>Обзор пассажиропотока</span><span className="active-dot" /></button>
       <button className="nav-item"><RouteIcon size={18} /><span>Маршруты</span><span className="nav-soon">10</span></button>
       <button className="nav-item"><CalendarDays size={18} /><span>История данных</span></button>
+      <a className="nav-item" href="#/tester" style={{ textDecoration: 'none', color: 'inherit' }}><FlaskConical size={18} /><span>Проверка API</span></a>
       <div className="side-bottom"><div className="system-card"><div className="system-row"><span className="status-light" /> Модель работает</div><p>Обновление прогноза<br />25 сентября, 12:40</p><div className="system-foot"><span>Версия 1.0</span><span className="spark"><Sparkles size={13} /> ML</span></div></div><div className="user-row"><div className="avatar">ЕД</div><div><strong>Диспетчер ЕДЦ</strong><span>Москва · Трамвай</span></div><Menu size={17} className="user-menu" /></div></div>
     </aside>
 
     <main className="main-content">
       <header className="topbar"><div className="crumbs">Аналитика <span>/</span> <b>Пассажиропоток</b></div><div className="top-actions"><div className="live-pill"><span className="live-dot" /> Прогноз готов</div><button className="icon-button" title="Справка"><span>?</span></button><div className="top-avatar">ЕД</div></div></header>
       <div className="content-wrap">
-        <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> ПЛАНИРОВАНИЕ · НОЯБРЬ—ДЕКАБРЬ 2025</div><h1>Пассажиропоток трамваев</h1><p>Прогноз загрузки маршрутов по часам и дням для оперативного планирования</p></div><div className="heading-actions"><button className="secondary-button" onClick={exportCsv}><span className="export-icon">↧</span> Экспорт отчёта</button></div></section>
+        <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> ПЛАНИРОВАНИЕ · НОЯБРЬ—ДЕКАБРЬ 2025</div><h1>Пассажиропоток трамваев</h1><p>Прогноз загрузки маршрутов по часам и дням для оперативного планирования</p></div><div className="heading-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="secondary-button" onClick={() => exportFile('csv')} title="Прогноз выбранного месяца и маршрута с текущей детализацией"><span className="export-icon">↧</span> CSV</button><button className="secondary-button" onClick={() => exportFile('xlsx')} title="Прогноз выбранного месяца и маршрута с листом «Сводка»"><span className="export-icon">↧</span> XLSX</button></div></section>
         <section className="toolbar"><div className="toolbar-group"><div className="toolbar-caption">ПЕРИОД ПРОГНОЗА</div><div className="month-switch"><button className={month === 11 ? 'selected' : ''} onClick={() => setMonth(11)}>Ноябрь</button><button className={month === 12 ? 'selected' : ''} onClick={() => setMonth(12)}>Декабрь</button></div></div><div className="toolbar-separator" /><label className="select-wrap"><span className="toolbar-caption">МАРШРУТ</span><div className="select-control"><RouteIcon size={16} /><select value={route} onChange={(e) => setRoute(e.target.value === 'all' ? 'all' : Number(e.target.value))}><option value="all">Все маршруты</option>{routes.map((item) => <option key={item.id} value={item.id}>Трамвай {item.id}</option>)}</select><ChevronDown size={15} /></div></label><div className="toolbar-separator" /><label className="select-wrap date-select"><span className="toolbar-caption">ДАТА ДЛЯ ДЕТАЛЬНОГО ПРОСМОТРА</span><div className="select-control"><CalendarDays size={16} /><select value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}>{Array.from({ length: new Date(2025, month, 0).getDate() }, (_, i) => { const d = `2025-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`; return <option key={d} value={d}>{dateLabel(d, true)}</option> })}</select><ChevronDown size={15} /></div></label><div className="updated-label"><span className="live-dot" /> Последнее обновление<br /><b>25 сен, 12:40</b></div></section>
 
-        {error && <div className="error-banner">Не удалось загрузить данные: {error}. Убедитесь, что API запущен на порту 8000.</div>}
+        {error && <div className="error-banner">Не удалось загрузить данные: {error}. Убедитесь, что сервис доступен.</div>}
         {loading && <div className="loading-card"><div className="loader" /> Загружаем прогноз и справочники…</div>}
 
         <section className="kpi-grid">
@@ -138,6 +131,9 @@ function App() {
         </section>
 
         <section className="bottom-grid"><article className="panel ranking-panel"><div className="panel-heading"><div><div className="panel-title">Загрузка маршрутов</div><div className="panel-subtitle">Прогноз посадок · {monthNames[month - 1].toLowerCase()} 2025</div></div><button className="text-action" onClick={() => setRoute('all')}>Все маршруты <span>→</span></button></div><div className="ranking-list">{routeRanking.map((item, index) => <button className={`ranking-row ${route === item.id ? 'chosen' : ''}`} key={item.id} onClick={() => setRoute(route === item.id ? 'all' : item.id)}><span className="rank-num">{String(index + 1).padStart(2, '0')}</span><span className="route-number" style={{ color: routeColors[item.id], background: `${routeColors[item.id]}13` }}>{item.id}</span><span className="rank-bar-track"><span className="rank-bar-fill" style={{ width: `${routeRanking[0]?.value ? item.value / routeRanking[0].value * 100 : 0}%`, background: routeColors[item.id] }} /></span><span className="rank-value">{format(item.value)}</span><span className="rank-label">посадок</span></button>)}</div><div className="ranking-footer">Выберите маршрут, чтобы отфильтровать карту и прогноз</div></article><article className="panel day-panel"><div className="panel-heading"><div><div className="panel-title">Почасовой прогноз</div><div className="panel-subtitle">{dateLabel(selectedDate, true)}</div></div><div className="date-chip"><CalendarDays size={14} /> {monthNames[month - 1]}</div></div><div className="hour-list">{hourlyDayRows.filter((row) => row.hour >= 5 && row.hour <= 23).map((row) => { const max = Math.max(...hourlyDayRows.map((r) => r.passengers), 1); return <div className={`hour-row ${row.hour === peak.hour ? 'peak-row' : ''}`} key={row.hour}><span className="hour-time">{String(row.hour).padStart(2, '0')}:00</span><span className="hour-bar-bg"><span className="hour-bar" style={{ width: `${row.passengers / max * 100}%` }} /></span><span className="hour-value">{format(row.passengers)}</span>{row.hour === peak.hour && <span className="peak-label">ПИК</span>}</div> })}</div><div className="day-total"><span>Итого за день</span><strong>{format(dayTotal)} <small>посадок</small></strong></div></article></section>
+        <StopsMap route={route} />
+        <Horizons route={route} />
+        <Coefficients route={route} />
         <footer className="page-footer"><span>Московский городской транспорт <b>·</b> Единый диспетчерский центр</span><span><span className="live-dot" /> Данные прогноза · модель временных рядов</span></footer>
       </div>
     </main>

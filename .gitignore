@@ -20,3 +20,6 @@ dataset/spravochniki/*
 # The root submission is tracked; the duplicate intermediate stays local.
 artifacts/*
 !artifacts/routes.geojson
+!artifacts/stops.json
+!artifacts/external/
+!artifacts/external/*
