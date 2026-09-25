@@ -1,0 +1,29 @@
+# Запуск: docker compose up --build   → http://localhost:8000 (порт можно сменить: TRAM_PORT=8010 docker compose up)
+services:
+  tram:
+    build: .
+    image: moskvy-tram-forecast
+    ports:
+      - "${TRAM_PORT:-8000}:8000"
+    environment:
+      # Принятые через API валидации хранятся на томе и переживают пересоздание контейнера
+      INGEST_FILE: /data/ingested.csv
+      # Пусто — приём данных открыт (только для разработки). Для публичного сервера задайте ключ: INGEST_API_KEY=... docker compose up
+      INGEST_API_KEY: ${INGEST_API_KEY:-}
+    volumes:
+      - tram-data:/data
+    # Профиль из требований: один контейнер 2 vCPU / 2 ГБ RAM
+    cpus: 2
+    mem_limit: 2g
+    # Сеть bridge по умолчанию: пользовательская сеть compose на Docker Desktop (macOS) режет пропускную способность больших ответов в ≈5 раз
+    network_mode: bridge
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  tram-data:

@@ -10,9 +10,11 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
-COPY backend/main.py ./backend/main.py
+COPY backend/ ./backend/
 COPY dataset/labels/ ./dataset/labels/
 COPY artifacts/routes.geojson ./artifacts/routes.geojson
+COPY artifacts/stops.json ./artifacts/stops.json
+COPY artifacts/external/ ./artifacts/external/
 COPY submission.csv ./submission.csv
 COPY --from=frontend-build /ui/dist ./frontend/dist
 EXPOSE 8000
