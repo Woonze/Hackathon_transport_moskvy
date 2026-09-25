@@ -26,3 +26,25 @@ export function useDebounced<T>(value: T, ms = 250): T {
 
 export const lastDay = (year: number, month: number) => new Date(year, month, 0).getDate()
 export const pad = (n: number) => String(n).padStart(2, '0')
+
+export type LiveEvent = { version: string; history_end: string; ingested_boardings: number; updated_at: string; worker_pid: number }
+export type LiveState = { status: 'off' | 'connecting' | 'online' | 'offline'; last: LiveEvent | null; events: number; receivedAt: Date | null }
+
+// Подписка на SSE /api/v1/stream: событие update приходит при подключении и при каждом приёме новых валидаций.
+export function useLive(enabled: boolean, onEvent?: (e: LiveEvent) => void): LiveState {
+  const [state, setState] = useState<LiveState>({ status: 'off', last: null, events: 0, receivedAt: null })
+  useEffect(() => {
+    if (!enabled) { setState((s) => ({ ...s, status: 'off' })); return }
+    setState((s) => ({ ...s, status: 'connecting' }))
+    const es = new EventSource(API + '/api/v1/stream')
+    es.onopen = () => setState((s) => ({ ...s, status: 'online' }))
+    es.onerror = () => setState((s) => ({ ...s, status: 'offline' })) // EventSource переподключается сам
+    es.addEventListener('update', (m) => {
+      const e = JSON.parse((m as MessageEvent).data) as LiveEvent
+      setState((s) => ({ status: 'online', last: e, events: s.events + 1, receivedAt: new Date() }))
+      onEvent?.(e)
+    })
+    return () => es.close()
+  }, [enabled]) // eslint-disable-line react-hooks/exhaustive-deps
+  return state
+}

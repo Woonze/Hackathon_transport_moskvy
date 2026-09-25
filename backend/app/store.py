@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import logging
 import threading
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
 
 from . import config
-from .services import external, overlay, stopmodel
+from .services import external, overlay, regime, stopmodel
 
 log = logging.getLogger("tram")
 
@@ -73,6 +74,8 @@ class DataStore:
         return True
 
     def _apply(self, extra: pd.DataFrame) -> None:
+        self.ingested_boardings = int(extra["boardings"].sum()) if len(extra) else 0
+        self.updated_at = datetime.now(timezone.utc)
         frame = pd.concat([self._labels, extra.drop(columns="batch_id")], ignore_index=True)
         last = max(config.HISTORY_END, extra["date"].max().date()) if len(extra) else config.HISTORY_END
         history = Series.from_frame(frame, "boardings", self.routes, config.HISTORY_START, last)
@@ -99,3 +102,4 @@ class DataStore:
         ]
         self.history_end = last
         self.history = history
+        self.regime = regime.compute(history, self.external.calendar)

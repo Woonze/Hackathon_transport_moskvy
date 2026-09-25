@@ -19,6 +19,7 @@ _TYPE_NAMES = {"holiday": "праздничный или перенесённы�
 class External:
     calendar: dict[date, str] = field(default_factory=dict)
     effects: dict = field(default_factory=dict)
+    weather: dict[date, dict] = field(default_factory=dict)
 
     @property
     def holiday_effect(self) -> float | None:
@@ -28,6 +29,15 @@ class External:
     @property
     def holiday_factor(self) -> float:
         return 1 + (self.holiday_effect or 0.0)
+
+    def weather_factor(self, w: dict) -> float:
+        """Множитель дня по измеренным эффектам осадков (≥ 5 мм) и снегопада (≥ 2 см); учитываются только подтверждённые."""
+        factor = 1.0
+        for key, hit in (("rain", w["precip"] >= 5), ("snow", w["snow"] >= 2)):
+            e = self.effects.get(key)
+            if hit and e and e.get("significant") and e.get("effect") is not None:
+                factor *= 1 + e["effect"]
+        return factor
 
     @property
     def holidays(self) -> list[date]:
@@ -43,7 +53,20 @@ def load() -> External:
         ext.calendar = {date.fromisoformat(d): t for d, t in zip(df["date"], df["day_type"])}
     if eff.exists():
         ext.effects = json.loads(eff.read_text(encoding="utf-8"))["effects"]
+    wf = config.EXTERNAL_DIR / "weather_2025.csv"
+    if wf.exists():
+        w = pd.read_csv(wf)
+        ext.weather = {date.fromisoformat(d): {"tmean": float(t), "precip": float(p), "snow": float(sn)} for d, t, p, sn in zip(w["date"], w["tmean"], w["precip"], w["snow"])}
     return ext
+
+
+def weather_days(ext: External, start: date, end: date) -> list[dict]:
+    out = []
+    for d, w in sorted(ext.weather.items()):
+        if start <= d <= end:
+            flags = (["осадки ≥ 5 мм"] if w["precip"] >= 5 else []) + (["снегопад ≥ 2 см"] if w["snow"] >= 2 else [])
+            out.append({"date": d.isoformat(), "tmean": w["tmean"], "precip_mm": w["precip"], "snow_cm": w["snow"], "flags": flags, "factor": round(ext.weather_factor(w), 4)})
+    return out
 
 
 def calendar_days(ext: External, start: date, end: date) -> list[dict]:

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from 'recharts'
 import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { fmt, getJson, lastDay, pad, useDebounced } from './shared'
+import { fmt, getJson, lastDay, pad, useDebounced, useLive } from './shared'
 import type { RouteId } from './shared'
 import './panels.css'
 
@@ -36,7 +36,14 @@ export default function StopsMap({ route: dashboardRoute, routeSummaries }: { ro
   const [mode, setMode] = useState<'hour' | 'day'>('hour')
   const [series, setSeries] = useState<Series | null>(null)
   const [error, setError] = useState('')
-  const debounced = useDebounced(useMemo(() => `${route}|${date}|${hours[0]}|${hours[1]}`, [route, date, hours]), 250)
+  const [liveOn, setLiveOn] = useState(false)
+  const live = useLive(liveOn)
+  // в реальном времени карта показывает историю за последний день, в котором есть данные, и обновляется по событиям потока
+  const kind = liveOn ? 'history' : 'forecast'
+  const day = liveOn ? (live.last?.history_end ?? '2025-10-31') : date
+  const version = liveOn ? (live.last?.version ?? '') : ''
+  const selKey = `${route}|${kind}|${day}|${hours[0]}|${hours[1]}`
+  const debounced = useDebounced(useMemo(() => `${selKey}|${version}`, [selKey, version]), liveOn ? 0 : 250)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -48,27 +55,34 @@ export default function StopsMap({ route: dashboardRoute, routeSummaries }: { ro
   useEffect(() => { if (dashboardRoute !== 'all' && routes.includes(dashboardRoute)) setRoute(dashboardRoute) }, [dashboardRoute, routes])
 
   useEffect(() => {
+    if (liveOn && !live.last) return // ждём первое событие потока: из него известен последний день с данными
     const controller = new AbortController()
-    const [r, d, hf, ht] = debounced.split('|')
-    const q = `route=${r}&start=${d}&end=${d}&hour_from=${hf}&hour_to=${ht}`
-    setError(''); setSelected(null); setFlow(null); setSegs(null)
+    const [r, k, d, hf, ht] = debounced.split('|')
+    const q = `route=${r}&kind=${k}&start=${d}&end=${d}&hour_from=${hf}&hour_to=${ht}`
+    setError('')
     Promise.all([getJson<Flow>(`/api/v1/stops/flow?${q}`, controller.signal), getJson<Segments>(`/api/v1/stops/segments?${q}`, controller.signal)])
-      .then(([f, s]) => { setFlow(f); setSegs(s) })
+      .then(([f, s]) => {
+        setFlow(f); setSegs(s)
+        setSelected((cur) => (cur ? (f.stops.find((x) => x.stop_id === cur.stop_id && x.direction === cur.direction) ?? null) : cur)) // выбор остановки переживает обновление
+      })
       .catch((e: Error) => { if (e.name !== 'AbortError') setError(e.message) })
     return () => controller.abort()
-  }, [debounced])
+  }, [debounced]) // eslint-disable-line react-hooks/exhaustive-deps
+  // смена маршрута, режима, даты или часов сбрасывает выбор и старые данные; обновление по потоку и смена последнего дня в реальном времени их сохраняют
+  const resetKey = `${route}|${kind}|${liveOn ? 'live' : day}|${hours[0]}|${hours[1]}`
+  useEffect(() => { setSelected(null); setFlow(null); setSegs(null) }, [resetKey])
 
   useEffect(() => {
     if (!selected) { setSeries(null); return }
     const controller = new AbortController()
-    const [y, m] = date.split('-').map(Number)
-    const range = mode === 'hour' ? `start=${date}&end=${date}&granularity=hour` : `start=${y}-${pad(m)}-01&end=${y}-${pad(m)}-${pad(lastDay(y, m))}&granularity=day`
-    setSeries(null)
-    getJson<Series>(`/api/v1/stops/${selected.stop_id}/series?${range}&route=${route}`, controller.signal)
+    const [y, m] = day.split('-').map(Number)
+    const range = mode === 'hour' ? `start=${day}&end=${day}&granularity=hour` : `start=${y}-${pad(m)}-01&end=${y}-${pad(m)}-${pad(lastDay(y, m))}&granularity=day`
+    if (!liveOn) setSeries(null)
+    getJson<Series>(`/api/v1/stops/${selected.stop_id}/series?kind=${kind}&${range}&route=${route}`, controller.signal)
       .then(setSeries)
       .catch((e: Error) => { if (e.name !== 'AbortError') setError(e.message) })
     return () => controller.abort()
-  }, [selected, date, mode, route])
+  }, [selected?.stop_id, day, mode, kind, version, route]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stops = useMemo(() => (flow?.stops ?? []).filter((s) => s.direction === direction), [flow, direction])
   const segments = useMemo(() => (segs?.segments ?? []).filter((s) => s.direction === direction), [segs, direction])
@@ -90,12 +104,20 @@ export default function StopsMap({ route: dashboardRoute, routeSummaries }: { ro
         </div>
         <div className="x-controls">
           <label className="x-field">Маршрут<select value={route} onChange={(e) => setRoute(Number(e.target.value))}>{routes.map((r) => <option key={r} value={r}>Трамвай {r}</option>)}</select></label>
-          <label className="x-field">Дата<input type="date" min="2025-11-01" max="2025-12-31" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} /></label>
+          <div className="x-field">Режим<div className="segmented"><button className={!liveOn ? 'active' : ''} onClick={() => setLiveOn(false)}>Прогноз</button><button className={liveOn ? 'active' : ''} onClick={() => setLiveOn(true)}>В реальном времени</button></div></div>
+          <label className="x-field">Дата<input type="date" min="2025-11-01" max="2025-12-31" value={liveOn ? day : date} disabled={liveOn} title={liveOn ? 'В реальном времени показывается последний день с данными' : undefined} onChange={(e) => e.target.value && setDate(e.target.value)} /></label>
           <label className="x-field">Час с<select value={hours[0]} onChange={(e) => setHours([Number(e.target.value), Math.max(Number(e.target.value), hours[1])])}>{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{pad(h)}:00</option>)}</select></label>
           <label className="x-field">Час по<select value={hours[1]} onChange={(e) => setHours([Math.min(hours[0], Number(e.target.value)), Number(e.target.value)])}>{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{pad(h)}:59</option>)}</select></label>
           {flow && <div className="x-kpis" style={{ margin: 0 }}><div><b>{fmt(flow.route_total)}</b><span>посадок на маршруте за выбранное время</span></div></div>}
         </div>
         {selectedRouteHasNoHistory && <div className="info-banner" role="status">Для маршрута {route} в истории нет наблюдений. Нулевые значения остановочной оценки не означают подтверждённое отсутствие пассажиров.</div>}
+        {liveOn && (
+          <div className={`x-live x-live-${live.status}`} role="status">
+            <span className="x-live-dot" />
+            {live.status === 'online' && live.last ? <>Онлайн · данные по {live.last.history_end.split('-').reverse().join('.')} · принято посадок: {fmt(live.last.ingested_boardings)} · обновлений: {live.events}{live.receivedAt ? ` · ${live.receivedAt.toLocaleTimeString('ru-RU')}` : ''}</>
+              : live.status === 'offline' ? 'Нет связи с потоком, переподключаюсь…' : 'Подключаюсь к потоку…'}
+          </div>
+        )}
         {error && <div className="x-error">{error}</div>}
         <div className="x-split">
           <div>

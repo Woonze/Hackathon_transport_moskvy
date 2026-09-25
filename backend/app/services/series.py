@@ -82,7 +82,11 @@ def cached(store: DataStore, key: tuple, build):
     return hit
 
 
-def series_json(store: DataStore, kind: str, start: date, end: date, route: int | None, granularity: Granularity) -> bytes:
+def series_json(store: DataStore, kind: str, start: date, end: date, route: int | None, granularity: Granularity, corrections: frozenset = frozenset()) -> bytes:
+    from . import corrections as corr
+
     validate(store, kind, start, end, route, granularity)
-    source = store.forecast if kind == "forecast" else store.history
-    return cached(store, ("series", kind, start, end, route, granularity), lambda: orjson.dumps(rows(store, source, start, end, route, granularity)))
+    if corrections and kind != "forecast":
+        raise ApiError(422, "Поправки применяются только к прогнозу", "corrections_forecast_only")
+    source = corr.corrected_series(store, corrections) if kind == "forecast" else store.history
+    return cached(store, ("series", kind, start, end, route, granularity, corrections), lambda: orjson.dumps(rows(store, source, start, end, route, granularity)))

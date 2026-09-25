@@ -8,20 +8,16 @@ from .. import config
 from ..errors import ApiError
 from ..schemas import AdjustRequest, Granularity
 from ..store import Series
+from . import corrections as corr
 from . import series
 
 def adjusted(store, req: AdjustRequest) -> dict:
     fc = store.forecast
     series.validate(store, "forecast", req.start, req.end, req.route, req.granularity)
 
-    mult = np.full(fc.values.shape, req.factors.weather * req.factors.event * req.factors.season)
     ext = store.external
-    if req.calendar:
-        if not ext.holidays:
-            raise ApiError(422, "Производственный календарь недоступен: запустите python -m analysis.external_effects", "calendar_unavailable")
-        for d in ext.holidays:
-            lo, hi = fc.span(d, d)
-            mult[:, lo:hi, :] *= ext.holiday_factor
+    names = frozenset(n for n, on in (("calendar", req.calendar), ("regime", req.regime), ("weather", req.weather_auto)) if on)
+    mult = np.full(fc.values.shape, req.factors.weather * req.factors.event * req.factors.season) * corr.multiplier(store, names)
     for rule in req.rules:
         if rule.end < config.FORECAST_START or rule.start > config.FORECAST_END:
             raise ApiError(422, f"Правило вне периода прогноза {config.FORECAST_START} — {config.FORECAST_END}", "rule_out_of_range")
@@ -45,6 +41,8 @@ def adjusted(store, req: AdjustRequest) -> dict:
             "global_multiplier": round(req.factors.weather * req.factors.event * req.factors.season, 4),
             "rules_applied": len(req.rules),
             "calendar_days": [d.isoformat() for d in ext.holidays] if req.calendar else [],
+            "regime_cells": [{"route": c["route"], "weekday": c["weekday_name"], "factor": c["factor"]} for c in store.regime if req.route in (None, c["route"])] if req.regime else [],
+            "weather_days": [d["date"] for d in _weather_hits(store)] if req.weather_auto else [],
         },
         "data": new,
     }
@@ -75,3 +73,8 @@ def year_outlook(store, route: int | None, growth: float) -> dict:
         "growth": growth,
         "data": months + scenario,
     }
+
+
+def _weather_hits(store) -> list[dict]:
+    from . import external
+    return [d for d in external.weather_days(store.external, config.FORECAST_START, config.FORECAST_END) if d["factor"] != 1.0]

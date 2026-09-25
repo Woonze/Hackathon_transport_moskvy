@@ -104,6 +104,8 @@ class AdjustRequest(BaseModel):
     factors: Factors = Factors()
     rules: list[Rule] = Field(default_factory=list, max_length=20)
     calendar: bool = Field(False, description="Учесть производственный календарь РФ: праздничные будни умножаются на измеренный коэффициент")
+    regime: bool = Field(False, description="Учесть структурные сдвиги режима «маршрут × день недели» (например, отмена выходных рейсов)")
+    weather_auto: bool = Field(False, description="Учесть погоду по архиву Open-Meteo: осадки и снегопад умножаются на измеренные коэффициенты")
 
 
 class IngestRequest(BaseModel):

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useLive } from './panels/shared'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 type Row = Record<string, string | number>
@@ -109,10 +110,12 @@ function SeriesTab({ routes }: { routes: number[] }) {
   const [route, setRoute] = useState('')
   const [[start, end], setRange] = useState(rangeFor('forecast'))
   const [gran, setGran] = useState('day')
+  const [corr, setCorr] = useState('')
   const [res, setRes] = useState<Result | null>(null)
   const run = async () => {
     const q = new URLSearchParams({ start, end, granularity: gran })
     if (route) q.set('route', route)
+    if (corr && kind === 'forecast') q.set('corrections', corr)
     setRes(await call(`/api/v1/${kind}?${q}`))
   }
   const rows = res && Array.isArray(res.data) ? (res.data as Row[]) : []
@@ -125,6 +128,7 @@ function SeriesTab({ routes }: { routes: number[] }) {
         <Field label="С"><input type="date" value={start} onChange={(e) => setRange([e.target.value, end])} /></Field>
         <Field label="По"><input type="date" value={end} onChange={(e) => setRange([start, e.target.value])} /></Field>
         <Field label="Детализация"><select value={gran} onChange={(e) => setGran(e.target.value)}>{GRAN.map((g) => <option key={g}>{g}</option>)}</select></Field>
+        <Field label="Поправки (прогноз)"><input value={corr} onChange={(e) => setCorr(e.target.value)} placeholder="calendar,regime,weather" /></Field>
         <button onClick={run}>Запросить</button>
       </div>
       <Panel res={res} />
@@ -140,9 +144,11 @@ function ExportTab({ routes }: { routes: number[] }) {
   const [[start, end], setRange] = useState(rangeFor('forecast'))
   const [gran, setGran] = useState('day')
   const [info, setInfo] = useState<Row | null>(null)
+  const [corr, setCorr] = useState('')
   const run = async () => {
     const q = new URLSearchParams({ kind, format, granularity: gran, start, end })
     if (route) q.set('route', route)
+    if (corr && kind === 'forecast') q.set('corrections', corr)
     const r = await fetch(`${API}/api/v1/export?${q}`)
     const blob = await r.blob()
     const disposition = r.headers.get('content-disposition') ?? ''
@@ -162,6 +168,7 @@ function ExportTab({ routes }: { routes: number[] }) {
         <Field label="С"><input type="date" value={start} onChange={(e) => setRange([e.target.value, end])} /></Field>
         <Field label="По"><input type="date" value={end} onChange={(e) => setRange([start, e.target.value])} /></Field>
         <Field label="Детализация"><select value={gran} onChange={(e) => setGran(e.target.value)}>{GRAN.map((g) => <option key={g}>{g}</option>)}</select></Field>
+        <Field label="Поправки (прогноз)"><input value={corr} onChange={(e) => setCorr(e.target.value)} placeholder="calendar,regime,weather" /></Field>
         <button onClick={run}>Скачать</button>
       </div>
       {info && <div className="t-panel"><Table rows={[info]} /></div>}
@@ -174,10 +181,12 @@ function AdjustTab({ routes }: { routes: number[] }) {
   const [[start, end], setRange] = useState(['2025-12-15', '2025-12-31'])
   const [f, setF] = useState({ weather: 1, event: 1, season: 1 })
   const [calendar, setCalendar] = useState(false)
+  const [regime, setRegime] = useState(false)
+  const [weatherAuto, setWeatherAuto] = useState(false)
   const [rule, setRule] = useState({ on: true, start: '2025-12-25', end: '2025-12-31', hour_from: 0, hour_to: 23, factor: 0.8, routes: '' })
   const [res, setRes] = useState<Result | null>(null)
   const run = async () => {
-    const body: Record<string, unknown> = { start, end, granularity: 'day', factors: f, rules: [], calendar }
+    const body: Record<string, unknown> = { start, end, granularity: 'day', factors: f, rules: [], calendar, regime, weather_auto: weatherAuto }
     if (route) body.route = Number(route)
     if (rule.on) {
       body.rules = [{ start: rule.start, end: rule.end, factor: rule.factor, hour_from: rule.hour_from, hour_to: rule.hour_to,
@@ -198,6 +207,8 @@ function AdjustTab({ routes }: { routes: number[] }) {
         <Field label="По"><input type="date" value={end} onChange={(e) => setRange([start, e.target.value])} /></Field>
         {slider('weather', 'Погода')}{slider('event', 'Событие')}{slider('season', 'Сезон')}
         <label className="t-check"><input type="checkbox" checked={calendar} onChange={(e) => setCalendar(e.target.checked)} /> Календарь РФ (праздничные будни)</label>
+        <label className="t-check"><input type="checkbox" checked={regime} onChange={(e) => setRegime(e.target.checked)} /> Сдвиги режима</label>
+        <label className="t-check"><input type="checkbox" checked={weatherAuto} onChange={(e) => setWeatherAuto(e.target.checked)} /> Погода по архиву</label>
       </div>
       <div className="t-form">
         <label className="t-check"><input type="checkbox" checked={rule.on} onChange={(e) => setRule({ ...rule, on: e.target.checked })} /> Точечное правило</label>
@@ -320,6 +331,9 @@ function IngestTab({ apiKey }: { apiKey: string }) {
   const [batch, setBatch] = useState('')
   const [res, setRes] = useState<Result | null>(null)
   const [check, setCheck] = useState<Result | null>(null)
+  const [listen, setListen] = useState(false)
+  const [log, setLog] = useState<string[]>([])
+  const live = useLive(listen, (e) => setLog((l) => [`${new Date().toLocaleTimeString('ru-RU')} update · данные по ${e.history_end} · принято посадок ${e.ingested_boardings} · воркер ${e.worker_pid}`, ...l].slice(0, 8)))
   const send = async () => {
     let records: unknown
     try { records = JSON.parse(text) } catch (e) { setRes({ url: '/api/v1/ingest/validations', method: 'POST', status: 0, ms: 0, serverMs: null, data: `Некорректный JSON: ${String(e)}` }); return }
@@ -335,6 +349,11 @@ function IngestTab({ apiKey }: { apiKey: string }) {
         <button className="ghost" onClick={async () => setCheck(await call('/api/v1/history?route=7&granularity=hour&start=2025-11-03&end=2025-11-03'))}>Проверить историю 03.11, маршрут 7</button>
       </div>
       <Panel res={res} /><Panel res={check} />
+      <div className="t-form" style={{ marginTop: 14 }}>
+        <button className="ghost" onClick={() => { setListen((v) => !v); setLog([]) }}>{listen ? 'Отключить поток /stream' : 'Подключить поток /stream (SSE)'}</button>
+        <span className="t-note" style={{ margin: 0 }}>Статус: {live.status === 'online' ? 'онлайн' : live.status === 'connecting' ? 'подключение' : live.status === 'offline' ? 'нет связи' : 'выключен'}. После отправки пакета здесь появится событие update.</span>
+      </div>
+      {log.length > 0 && <div className="t-panel"><pre data-testid="live-log">{log.join('\n')}</pre></div>}
       {check && Array.isArray(check.data) && <Chart data={(check.data as Row[]).map((r) => ({ x: `${r.hour}ч`, Посадки: r.passengers }))} keys={['Посадки']} height={200} />}
     </>
   )
@@ -350,6 +369,8 @@ const CASES: { name: string; url: string; body?: unknown; status: number; code: 
   { name: 'Экспорт: неверный формат', url: '/api/v1/export?format=pdf', status: 422, code: 'validation_error' },
   { name: 'Коэффициент вне границ', url: '/api/v1/forecast/adjusted', body: { factors: { weather: 3 } }, status: 422, code: 'validation_error' },
   { name: 'Правило: неизвестный маршрут', url: '/api/v1/forecast/adjusted', body: { rules: [{ start: '2025-11-01', end: '2025-11-02', factor: 1, routes: [99] }] }, status: 404, code: 'route_not_found' },
+  { name: 'Поправки: неизвестное название', url: '/api/v1/forecast?corrections=nope', status: 422, code: 'unknown_correction' },
+  { name: 'Поправки к истории', url: '/api/v1/export?kind=history&corrections=regime', status: 422, code: 'corrections_forecast_only' },
   { name: 'Остановки: маршрут без справочника', url: '/api/v1/stops?route=17', status: 404, code: 'stops_not_available' },
   { name: 'Остановки: не указан маршрут', url: '/api/v1/stops/flow', status: 422, code: 'validation_error' },
   { name: 'Остановки: неизвестная остановка', url: '/api/v1/stops/000/series', status: 404, code: 'stop_not_found' },
