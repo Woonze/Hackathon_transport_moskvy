@@ -57,9 +57,16 @@ def test_stop_series_matches_flow(client):
     stop = flow["stops"][3]
     ser = client.get(f"/api/v1/stops/{stop['stop_id']}/series?route=1&start=2025-11-03&end=2025-11-09").json()
     expected = sum(s["boardings"] for s in flow["stops"] if s["stop_id"] == stop["stop_id"])
-    assert len(ser["data"]) == 7 and abs(sum(p["passengers"] for p in ser["data"]) - expected) <= 8
-    hourly = client.get(f"/api/v1/stops/{stop['stop_id']}/series?start=2025-11-03&end=2025-11-03&granularity=hour").json()
+    assert len(ser["data"]) == 7 and sum(p["passengers"] for p in ser["data"]) == expected
+    hourly = client.get(f"/api/v1/stops/{stop['stop_id']}/series?route=1&start=2025-11-03&end=2025-11-03&granularity=hour").json()
     assert len(hourly["data"]) == 24 and {"date", "hour", "passengers"} <= set(hourly["data"][0])
+    at_seven = client.get("/api/v1/stops/flow?route=1&start=2025-11-03&end=2025-11-03&hour_from=7&hour_to=7").json()
+    expected_hour = sum(s["boardings"] for s in at_seven["stops"] if s["stop_id"] == stop["stop_id"])
+    assert next(p["passengers"] for p in hourly["data"] if p["hour"] == 7) == expected_hour
+    monthly = client.get(f"/api/v1/stops/{stop['stop_id']}/series?route=1&start=2025-11-01&end=2025-11-30&granularity=month").json()
+    monthly_flow = client.get("/api/v1/stops/flow?route=1&start=2025-11-01&end=2025-11-30").json()
+    expected_month = sum(s["boardings"] for s in monthly_flow["stops"] if s["stop_id"] == stop["stop_id"])
+    assert monthly["data"] == [{"month": "2025-11", "passengers": expected_month}]
 
 
 def test_stop_series_can_filter_a_shared_stop_by_route(client):
