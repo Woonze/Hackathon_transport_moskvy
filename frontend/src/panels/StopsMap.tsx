@@ -77,7 +77,7 @@ export default function StopsMap({ route: dashboardRoute, routeSummaries }: { ro
   const points = useMemo(() => stops.map((s) => [s.lat, s.lon] as [number, number]), [stops])
   const top = useMemo(() => [...stops].sort((a, b) => b.boardings - a.boardings).slice(0, 6), [stops])
   const directions = useMemo(() => [...new Set((flow?.stops ?? []).map((s) => s.direction))].sort(), [flow])
-  const selectedRouteHasNoHistory = dashboardRoute === 'all' && routeSummaries.find((item) => item.id === route)?.historical_total === 0
+  const selectedRouteHasNoHistory = routeSummaries.find((item) => item.id === route)?.historical_total === 0
   const chart = (series?.data ?? []).map((p) => ({ label: p.hour !== undefined ? `${pad(p.hour)}:00` : (p.date ?? '').slice(8), passengers: p.passengers }))
   const peak = useMemo(() => segments.reduce<Segment | null>((best, s) => (!best || s.passengers > best.passengers ? s : best), null), [segments])
 
