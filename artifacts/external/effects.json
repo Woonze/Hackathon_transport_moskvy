@@ -1,0 +1,426 @@
+{
+ "sources": {
+  "calendar": "https://isdayoff.ru/",
+  "weather": "https://open-meteo.com/en/docs/historical-weather-api"
+ },
+ "effects": {
+  "holiday": {
+   "label": "Праздник в будни",
+   "effect": -0.5352,
+   "ci95": [
+    -0.5581,
+    -0.5112
+   ],
+   "t": -29.78,
+   "days": 12,
+   "significant": true
+  },
+  "work_weekend": {
+   "label": "Рабочая суббота/воскр.",
+   "effect": null,
+   "ci95": null,
+   "t": null,
+   "days": 0,
+   "significant": false
+  },
+  "short": {
+   "label": "Предпраздничный сокращённый",
+   "effect": 0.0238,
+   "ci95": [
+    -0.0652,
+    0.1213
+   ],
+   "t": 0.51,
+   "days": 3,
+   "significant": false
+  },
+  "rain": {
+   "label": "Сильные осадки ≥5 мм",
+   "effect": -0.0651,
+   "ci95": [
+    -0.0923,
+    -0.0371
+   ],
+   "t": -4.47,
+   "days": 39,
+   "significant": true
+  },
+  "snow": {
+   "label": "Снегопад ≥2 см",
+   "effect": -0.0674,
+   "ci95": [
+    -0.12,
+    -0.0117
+   ],
+   "t": -2.36,
+   "days": 9,
+   "significant": true
+  },
+  "cold": {
+   "label": "Мороз ≤ −10 °C",
+   "effect": -0.0331,
+   "ci95": [
+    -0.1104,
+    0.051
+   ],
+   "t": -0.79,
+   "days": 4,
+   "significant": false
+  },
+  "hot": {
+   "label": "Жара ≥ 25 °C",
+   "effect": -0.0519,
+   "ci95": [
+    -0.1078,
+    0.0074
+   ],
+   "t": -1.72,
+   "days": 9,
+   "significant": false
+  }
+ },
+ "backtests": [
+  {
+   "window": "Сен–окт (обучение янв–авг)",
+   "holiday_days": 0,
+   "holiday_factor_from_train": 0.467,
+   "models": {
+    "A. по дню недели (текущая модель)": {
+     "score": 0.8837,
+     "score_best_scale": 0.8837,
+     "best_scale": 1.085,
+     "score_holidays": null
+    },
+    "B. A + поправка на праздничные будни": {
+     "score": 0.8837,
+     "score_best_scale": 0.8837,
+     "best_scale": 1.085,
+     "score_holidays": null
+    },
+    "C. отдельный профиль праздничных дней": {
+     "score": 0.8827,
+     "score_best_scale": 0.8864,
+     "best_scale": 1.055,
+     "score_holidays": null
+    },
+    "D. B + фактическая погода": {
+     "score": 0.8816,
+     "score_best_scale": 0.8819,
+     "best_scale": 1.095,
+     "score_holidays": null
+    }
+   }
+  },
+  {
+   "window": "Май–июнь (обучение янв–апр)",
+   "holiday_days": 6,
+   "holiday_factor_from_train": 0.4234,
+   "models": {
+    "A. по дню недели (текущая модель)": {
+     "score": 0.7877,
+     "score_best_scale": 0.83,
+     "best_scale": 0.965,
+     "score_holidays": 0.0
+    },
+    "B. A + поправка на праздничные будни": {
+     "score": 0.8426,
+     "score_best_scale": 0.8715,
+     "best_scale": 0.99,
+     "score_holidays": 0.662
+    },
+    "C. отдельный профиль праздничных дней": {
+     "score": 0.8257,
+     "score_best_scale": 0.8782,
+     "best_scale": 0.955,
+     "score_holidays": 0.7937
+    },
+    "D. B + фактическая погода": {
+     "score": 0.8463,
+     "score_best_scale": 0.8722,
+     "best_scale": 0.99,
+     "score_holidays": 0.6618
+    }
+   }
+  },
+  {
+   "window": "Окт (обучение янв–сен)",
+   "holiday_days": 0,
+   "holiday_factor_from_train": 0.4661,
+   "models": {
+    "A. по дню недели (текущая модель)": {
+     "score": 0.8876,
+     "score_best_scale": 0.888,
+     "best_scale": 1.1,
+     "score_holidays": null
+    },
+    "B. A + поправка на праздничные будни": {
+     "score": 0.8876,
+     "score_best_scale": 0.888,
+     "best_scale": 1.1,
+     "score_holidays": null
+    },
+    "C. отдельный профиль праздничных дней": {
+     "score": 0.8884,
+     "score_best_scale": 0.8898,
+     "best_scale": 1.065,
+     "score_holidays": null
+    },
+    "D. B + фактическая погода": {
+     "score": 0.8841,
+     "score_best_scale": 0.8863,
+     "best_scale": 1.115,
+     "score_holidays": null
+    }
+   }
+  }
+ ],
+ "days_used": 304,
+ "expected_gain_pp": 3.05,
+ "forecast_holiday_share": 0.0569,
+ "forecast_calendar": [
+  {
+   "date": "2025-11-01",
+   "type": "short"
+  },
+  {
+   "date": "2025-11-02",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-11-03",
+   "type": "holiday"
+  },
+  {
+   "date": "2025-11-04",
+   "type": "holiday"
+  },
+  {
+   "date": "2025-11-05",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-06",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-07",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-08",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-11-09",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-11-10",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-11",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-12",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-13",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-14",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-15",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-11-16",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-11-17",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-18",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-19",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-20",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-21",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-22",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-11-23",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-11-24",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-25",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-26",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-27",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-28",
+   "type": "work"
+  },
+  {
+   "date": "2025-11-29",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-11-30",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-12-01",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-02",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-03",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-04",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-05",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-06",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-12-07",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-12-08",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-09",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-10",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-11",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-12",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-13",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-12-14",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-12-15",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-16",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-17",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-18",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-19",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-20",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-12-21",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-12-22",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-23",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-24",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-25",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-26",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-27",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-12-28",
+   "type": "weekend"
+  },
+  {
+   "date": "2025-12-29",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-30",
+   "type": "work"
+  },
+  {
+   "date": "2025-12-31",
+   "type": "holiday"
+  }
+ ]
+}
