@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .errors import install_error_handlers
-from .routers import data, ingest, live, scenarios, stops
+from .routers import data, dispatch, ingest, live, scenarios, stops
 from .store import DataStore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -66,7 +66,7 @@ def create_app() -> FastAPI:
     def sync_store(request: Request) -> None:
         request.app.state.store.refresh()  # подхватываем данные, принятые другим воркером
 
-    for router in (data.router, scenarios.router, ingest.router, stops.router, live.router):
+    for router in (data.router, scenarios.router, ingest.router, stops.router, live.router, dispatch.router):
         app.include_router(router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(sync_store)])
         app.include_router(router, prefix="/api", include_in_schema=False, dependencies=[Depends(sync_store)])  # алиасы
 

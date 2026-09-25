@@ -257,6 +257,32 @@ function YearTab({ routes }: { routes: number[] }) {
   )
 }
 
+function DispatchTab({ routes }: { routes: number[] }) {
+  const [route, setRoute] = useState('7')
+  const [date, setDate] = useState('2025-11-10')
+  const [corr, setCorr] = useState('calendar,regime')
+  const [capacity, setCapacity] = useState('')
+  const [vehicles, setVehicles] = useState('')
+  const [res, setRes] = useState<Result | null>(null)
+  const q = () => `route=${route}&corrections=${corr}${capacity && vehicles ? `&capacity=${capacity}&vehicles=${vehicles}` : ''}`
+  const rows = res && res.status === 200 && (res.data as { hours?: Row[] }).hours
+  return (
+    <>
+      <div className="t-form">
+        <Field label="Маршрут"><RouteSelect routes={routes} value={route} onChange={setRoute} /></Field>
+        <Field label="Дата"><input type="date" min="2025-11-01" max="2025-12-31" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+        <Field label="Поправки"><input value={corr} onChange={(e) => setCorr(e.target.value)} placeholder="calendar,regime,weather" /></Field>
+        <Field label="Посадок за час на вагон"><input type="number" value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="необязательно" /></Field>
+        <Field label="Вагонов на линии"><input type="number" value={vehicles} onChange={(e) => setVehicles(e.target.value)} placeholder="необязательно" /></Field>
+        <button onClick={async () => setRes(await call(`/api/v1/dispatch/day?date=${date}&${q()}`))}>Сводка на день</button>
+        <button className="ghost" onClick={async () => setRes(await call(`/api/v1/dispatch/savings?corrections=${corr}${route ? `&route=${route}` : ''}&limit=20`))}>Дни для пересмотра выпуска</button>
+      </div>
+      <Panel res={res} />
+      {rows && <Chart data={(rows as Row[]).map((r) => ({ x: `${r.hour}ч`, Посадки: r.boardings, 'Обычный день': r.typical }))} keys={['Посадки', 'Обычный день']} height={220} />}
+    </>
+  )
+}
+
 type Flow = { route_total: number; stops: Row[] }
 type Seg = { segments: { direction: number; sequence: number; passengers: number; from: { name: string }; to: { name: string } }[]; peak: { direction: number; from: { name: string }; to: { name: string }; passengers: number } | null }
 
@@ -404,7 +430,7 @@ function ErrorsTab({ apiKey, guarded }: { apiKey: string; guarded: boolean }) {
   )
 }
 
-const TABS = ['Ряды', 'Экспорт', 'Коэффициенты', 'Год', 'Остановки', 'Приём данных', 'Ошибки'] as const
+const TABS = ['Ряды', 'Экспорт', 'Коэффициенты', 'Год', 'Остановки', 'Диспетчер', 'Приём данных', 'Ошибки'] as const
 
 export default function Tester() {
   const [tab, setTab] = useState<(typeof TABS)[number]>('Ряды')
@@ -434,6 +460,7 @@ export default function Tester() {
         {tab === 'Экспорт' && <ExportTab routes={routes} />}
         {tab === 'Коэффициенты' && <AdjustTab routes={routes} />}
         {tab === 'Год' && <YearTab routes={routes} />}
+        {tab === 'Диспетчер' && <DispatchTab routes={routes} />}
         {tab === 'Остановки' && <StopsTab />}
         {tab === 'Приём данных' && <IngestTab apiKey={apiKey} />}
         {tab === 'Ошибки' && <ErrorsTab apiKey={apiKey} guarded={!!h?.ingest_protected} />}

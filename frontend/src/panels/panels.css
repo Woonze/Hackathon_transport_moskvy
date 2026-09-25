@@ -30,3 +30,10 @@
 .x-live-dot{width:9px;height:9px;border-radius:50%;background:currentColor;flex:none}
 .x-live-online .x-live-dot{animation:x-pulse 1.6s ease-in-out infinite}
 @keyframes x-pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.x-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.x-badge-red{background:#fde8ec;color:#a23b2a}.x-badge-blue{background:#e6edff;color:#2f5bd8}.x-badge-grey{background:#eef0f5;color:#566175}
+.x-scroll{overflow:auto;max-height:300px}
+.x-table{width:100%;border-collapse:collapse;font-size:12px}
+.x-table th{position:sticky;top:0;background:#f7f9fd;text-align:left;padding:6px 8px;color:#566175;font-weight:600}
+.x-table td{padding:5px 8px;border-top:1px solid #edf0f6;color:#29354a}
+.x-swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:2px}
