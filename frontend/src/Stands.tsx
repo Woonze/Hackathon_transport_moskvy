@@ -1,10 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check,
   ChevronDown, CircleHelp, Clock3, CloudRain, Download, Gauge, Layers3, MapPin,
   Route, Search, Settings2, ShieldCheck, Sparkles, TramFront, Users, Zap,
 } from 'lucide-react'
 import './stands.css'
+import './stands-map.css'
+import OverviewMap from './panels/OverviewMap'
+
+type StandsGeo = {
+  type: 'FeatureCollection'
+  features: { type: 'Feature'; geometry: { type: 'LineString' | 'MultiLineString'; coordinates: number[][] | number[][][] }; properties: { route: number; stop_count: number; stops: string[] } }[]
+}
 
 type Horizon = 'day' | 'week' | 'month'
 type StandId = 'overview' | 'routes' | 'heatmap' | 'scenario' | 'dispatch'
@@ -37,6 +44,23 @@ function SmallLine({ seed, color = 'currentColor' }: { seed: number; color?: str
     return `${i * 5},${Math.max(1, Math.min(19, y)).toFixed(1)}`
   }).join(' ')
   return <svg className="stand-sparkline" viewBox="0 0 86 22" preserveAspectRatio="none" aria-hidden="true"><polyline points={points} fill="none" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+}
+
+function StandsMap({ route }: { route: number | 'all' }) {
+  const [geo, setGeo] = useState<StandsGeo>({ type: 'FeatureCollection', features: [] })
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/map', { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => { if (data?.features) setGeo(data as StandsGeo) })
+      .catch(() => {})
+    return () => controller.abort()
+  }, [])
+  const routeGeometryAvailable = route === 'all' || geo.features.some((feature) => feature.properties.route === route)
+  return <div className="stands-map-slot">
+    {!routeGeometryAvailable && <div className="stands-map-hint">Для маршрута №{route} геометрия пока не загружена — показана доступная сеть.</div>}
+    <OverviewMap route={routeGeometryAvailable ? route : 'all'} geo={geo as never} />
+  </div>
 }
 
 function Trend({ value }: { value: number }) {
@@ -133,6 +157,8 @@ function Stands() {
         <section className="stands-filterbar" aria-label="Общие фильтры дашборда"><div className="stands-filter-item"><span>ГОРИЗОНТ</span><div className="stands-toggle" role="group" aria-label="Горизонт прогноза">{(['day', 'week', 'month'] as Horizon[]).map((item) => <button key={item} aria-pressed={horizon === item} className={horizon === item ? 'active' : ''} onClick={() => setHorizon(item)}>{item === 'day' ? 'Сутки' : item === 'week' ? 'Неделя' : 'Месяц'}</button>)}</div></div><div className="stands-filter-divider" /><label className="stands-filter-item route-filter"><span>МАРШРУТ</span><div className="stands-select"><Route size={15} /><select value={route} onChange={(e) => setRoute(e.target.value === 'all' ? 'all' : Number(e.target.value))}><option value="all">Все маршруты</option>{routeData.map((item) => <option value={item.id} key={item.id}>№ {item.id} · {item.name.split(' — ')[0]}</option>)}</select><ChevronDown size={14} /></div></label><div className="stands-filter-divider" /><label className="stands-filter-item"><span>ПЕРИОД · {horizon === 'week' ? 'НАЧАЛО НЕДЕЛИ' : 'ДАТА'}</span><div className="stands-date-control"><CalendarDays size={15} /><select value={dateStart} onChange={(e) => setDateStart(e.target.value)} aria-label="Начало периода"><option value="2025-11-03">3 ноября 2025</option><option value="2025-11-28">28 ноября 2025</option><option value="2025-12-01">1 декабря 2025</option><option value="2025-12-25">25 декабря 2025</option></select><ChevronDown size={14} /></div></label><span className="stands-range-label">{dateLabel(rangeStart)} — {dateLabel(rangeEnd)}</span><span className="stands-last-update"><span className="update-dot" /> Обновлено сейчас</span></section>
 
         {notice && <div className="stands-toast" role="status"><Check size={15} />{notice}<button onClick={() => setNotice('')} aria-label="Закрыть">×</button></div>}
+
+        {active === 'routes' && <StandsMap route={route} />}
 
         {active === 'overview' && <>
           <section className="stands-metrics four-metrics"><MetricCard icon={<Users size={17} />} label="Прогноз пассажиров" value={fmt(currentTotal)} note={horizon === 'day' ? 'за выбранные сутки' : horizon === 'week' ? 'за 7 дней' : `за ${new Intl.DateTimeFormat('ru-RU', { month: 'long' }).format(selectedDate)}`} trend={6.8} color="blue" seed={3} /><MetricCard icon={<Gauge size={17} />} label="Средняя загрузка" value={route === 'all' ? '74%' : `${routeData.find((x) => x.id === route)?.load ?? 62}%`} note="от доступной вместимости" trend={2.1} color="violet" seed={6} /><MetricCard icon={<Clock3 size={17} />} label="Час пик" value="08:00–09:00" note="утренний максимум" color="amber" seed={8} /><MetricCard icon={<ShieldCheck size={17} />} label="Точность модели" value="88,4%" note="WAPE · бэктест Sep–Oct" trend={1.4} color="mint" seed={11} /></section>

@@ -1,0 +1,12 @@
+.stands-map-hint{margin-bottom:8px;padding:8px 10px;border:1px solid #51432e;border-radius:6px;background:#29241d;color:#d5b17e;font-size:9px}
+.stands-map-slot .map-panel{padding:14px;background:#141a25;border:1px solid #252d3b;border-radius:9px;box-shadow:none}
+.stands-map-slot .panel-title{color:#e8edf7;font-size:11px}
+.stands-map-slot .panel-subtitle{color:#8793a7}
+.stands-map-slot .map-badge{background:#1b2432;border-color:#303949;color:#aab6ca}
+.stands-map-slot .map-frame{height:390px;background:#171e2b}
+.stands-map-slot .leaflet-tile-pane{filter:brightness(.7) saturate(.55)}
+.stands-map-slot .map-legend{background:#111925ed;border-color:#303949;color:#bac5d5;box-shadow:0 3px 10px #0005}
+.stands-map-slot .legend-stop{border-color:#111925}
+.stands-map-slot .map-note{color:#8793a7}
+.stands-map-slot .note-info{border-color:#47546a;color:#9eacc1}
+@media(max-width:560px){.stands-map-slot .map-frame{height:280px}}
