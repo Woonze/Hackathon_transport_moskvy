@@ -37,13 +37,15 @@ def test_stream_sends_snapshot_on_connect(client):
         assert r.status_code == 200 and r.headers["content-type"].startswith("text/event-stream")
         ev = events(r)
     assert len(ev) == 1 and ev[0][0] == "update"
-    assert set(ev[0][1]) == {"version", "history_end", "ingested_boardings", "updated_at", "worker_pid"}
+    assert set(ev[0][1]) == {"version", "history_end", "ingested_boardings", "updated_at", "worker_pid", "ml_model"}
+    assert ev[0][1]["ml_model"]["name"] == "HistGradientBoostingRegressor"
+    assert ev[0][1]["ml_model"]["training_rows"] > 0
 
 
 def test_stream_pushes_update_after_ingest(client):
     def send():
         time.sleep(0.4)
-        client.post("/api/v1/ingest/validations", json={"records": [rec("2025-11-05 09:10:00"), rec("2025-11-05 09:20:00")]})
+        client.post("/api/v1/ingest/validations", json={"records": [rec("2025-11-05 09:10:00"), rec("2025-11-05 09:20:00")], "complete": True})
 
     t = threading.Thread(target=send)
     t.start()
@@ -55,6 +57,7 @@ def test_stream_pushes_update_after_ingest(client):
     assert first["version"] != second["version"]
     assert first["history_end"] == "2025-10-31" and second["history_end"] == "2025-11-05"
     assert second["ingested_boardings"] == 2
+    assert second["ml_model"]["updates"] == first["ml_model"]["updates"] + 1
 
 
 def test_stream_sees_data_written_by_another_worker(client):
@@ -77,3 +80,5 @@ def test_stream_rejects_bad_wait(client):
 def test_health_reports_data_freshness(client):
     h = client.get("/api/v1/health").json()
     assert "data_updated_at" in h and h["ingested_boardings"] == 0
+    assert h["ml_model"]["name"] == "HistGradientBoostingRegressor"
+    assert h["ml_model"]["training_rows"] > 0

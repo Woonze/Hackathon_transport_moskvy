@@ -32,7 +32,7 @@ def aggregate(boardings: pd.DataFrame) -> pd.DataFrame:
     return boardings.groupby(["route", "date", "hour"], as_index=False).size().rename(columns={"size": "boardings"})
 
 
-def process(records: list[dict], batch_id: str | None, store) -> dict:
+def process(records: list[dict], batch_id: str | None, store, complete: bool = False) -> dict:
     """Нормализует пакет, дописывает в общий файл и обновляет историю текущего воркера."""
     import hashlib
 
@@ -76,7 +76,7 @@ def process(records: list[dict], batch_id: str | None, store) -> dict:
     boardings = boardings[known & in_range]
     agg = aggregate(boardings)
 
-    new = overlay.append(batch_id, agg) if len(agg) else True
+    new = overlay.append(batch_id, agg, complete=complete) if len(agg) else True
     if new:
         store.refresh()
     return {
@@ -84,6 +84,7 @@ def process(records: list[dict], batch_id: str | None, store) -> dict:
         "status": "accepted" if new else "already_ingested",
         "received": len(records),
         "accepted": len(boardings) if new else 0,
+        "complete": complete,
         "duplicates": duplicates,
         "rejected": rejected,
         "period": [boardings["date"].min().date().isoformat(), boardings["date"].max().date().isoformat()] if len(boardings) else None,

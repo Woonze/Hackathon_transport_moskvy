@@ -206,7 +206,7 @@ function AdjustTab({ routes }: { routes: number[] }) {
         <Field label="С"><input type="date" value={start} onChange={(e) => setRange([e.target.value, end])} /></Field>
         <Field label="По"><input type="date" value={end} onChange={(e) => setRange([start, e.target.value])} /></Field>
         {slider('weather', 'Погода')}{slider('event', 'Событие')}{slider('season', 'Сезон')}
-        <label className="t-check"><input type="checkbox" checked={calendar} onChange={(e) => setCalendar(e.target.checked)} /> Календарь РФ (праздничные будни)</label>
+        <label className="t-check"><input type="checkbox" checked={calendar} onChange={(e) => setCalendar(e.target.checked)} /> Календарь РФ (уже учтён ML-моделью; флаг совместимости)</label>
         <label className="t-check"><input type="checkbox" checked={regime} onChange={(e) => setRegime(e.target.checked)} /> Сдвиги режима</label>
         <label className="t-check"><input type="checkbox" checked={weatherAuto} onChange={(e) => setWeatherAuto(e.target.checked)} /> Погода по архиву</label>
       </div>
@@ -329,6 +329,7 @@ const SAMPLE = [
 function IngestTab({ apiKey }: { apiKey: string }) {
   const [text, setText] = useState(JSON.stringify(SAMPLE, null, 2))
   const [batch, setBatch] = useState('')
+  const [complete, setComplete] = useState(false)
   const [res, setRes] = useState<Result | null>(null)
   const [check, setCheck] = useState<Result | null>(null)
   const [listen, setListen] = useState(false)
@@ -337,14 +338,15 @@ function IngestTab({ apiKey }: { apiKey: string }) {
   const send = async () => {
     let records: unknown
     try { records = JSON.parse(text) } catch (e) { setRes({ url: '/api/v1/ingest/validations', method: 'POST', status: 0, ms: 0, serverMs: null, data: `Некорректный JSON: ${String(e)}` }); return }
-    setRes(await post('/api/v1/ingest/validations', { records, ...(batch ? { batch_id: batch } : {}) }, apiKey ? { 'X-API-Key': apiKey } : {}))
+    setRes(await post('/api/v1/ingest/validations', { records, complete, ...(batch ? { batch_id: batch } : {}) }, apiKey ? { 'X-API-Key': apiKey } : {}))
   }
   return (
     <>
-      <p className="t-note">Пакет попадает в историю и сохраняется в <code>artifacts/ingested.csv</code>. Повторная отправка того же пакета не задваивает данные. Чтобы сбросить, удалите этот файл и перезапустите сервис.</p>
+      <p className="t-note">Пакет сразу попадает в историю и сохраняется в <code>artifacts/ingested.csv</code>. ML-модель обучается на новых датах, когда отправитель подтвердил полноту их данных. Повторная отправка пакета не задваивает посадки.</p>
       <textarea className="t-area" value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
       <div className="t-form">
         <Field label="batch_id (необязательно)"><input value={batch} onChange={(e) => setBatch(e.target.value)} placeholder="по содержимому" /></Field>
+        <label className="t-check"><input type="checkbox" checked={complete} onChange={(e) => setComplete(e.target.checked)} /> Данные за даты пакета полные: завершить дни и переобучить ML</label>
         <button onClick={send}>Отправить пакет</button>
         <button className="ghost" onClick={async () => setCheck(await call('/api/v1/history?route=7&granularity=hour&start=2025-11-03&end=2025-11-03'))}>Проверить историю 03.11, маршрут 7</button>
       </div>

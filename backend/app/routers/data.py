@@ -31,6 +31,7 @@ def health(request: Request):
         "ingest_protected": bool(config.INGEST_API_KEY),
         "data_updated_at": store.updated_at.isoformat(timespec="seconds"),
         "ingested_boardings": store.ingested_boardings,
+        "ml_model": store.ml_status,
         "history_period": [config.HISTORY_START.isoformat(), store.history_end.isoformat()],
         "forecast_period": [config.FORECAST_START.isoformat(), config.FORECAST_END.isoformat()],
     }
