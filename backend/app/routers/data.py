@@ -29,6 +29,8 @@ def health(request: Request):
         "forecast_rows": store.forecast_rows,
         "routes": len(store.routes),
         "ingest_protected": bool(config.INGEST_API_KEY),
+        "data_updated_at": store.updated_at.isoformat(timespec="seconds"),
+        "ingested_boardings": store.ingested_boardings,
         "history_period": [config.HISTORY_START.isoformat(), store.history_end.isoformat()],
         "forecast_period": [config.FORECAST_START.isoformat(), config.FORECAST_END.isoformat()],
     }

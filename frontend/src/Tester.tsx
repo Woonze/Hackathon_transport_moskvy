@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useLive } from './panels/shared'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 type Row = Record<string, string | number>
@@ -330,6 +331,9 @@ function IngestTab({ apiKey }: { apiKey: string }) {
   const [batch, setBatch] = useState('')
   const [res, setRes] = useState<Result | null>(null)
   const [check, setCheck] = useState<Result | null>(null)
+  const [listen, setListen] = useState(false)
+  const [log, setLog] = useState<string[]>([])
+  const live = useLive(listen, (e) => setLog((l) => [`${new Date().toLocaleTimeString('ru-RU')} update · данные по ${e.history_end} · принято посадок ${e.ingested_boardings} · воркер ${e.worker_pid}`, ...l].slice(0, 8)))
   const send = async () => {
     let records: unknown
     try { records = JSON.parse(text) } catch (e) { setRes({ url: '/api/v1/ingest/validations', method: 'POST', status: 0, ms: 0, serverMs: null, data: `Некорректный JSON: ${String(e)}` }); return }
@@ -345,6 +349,11 @@ function IngestTab({ apiKey }: { apiKey: string }) {
         <button className="ghost" onClick={async () => setCheck(await call('/api/v1/history?route=7&granularity=hour&start=2025-11-03&end=2025-11-03'))}>Проверить историю 03.11, маршрут 7</button>
       </div>
       <Panel res={res} /><Panel res={check} />
+      <div className="t-form" style={{ marginTop: 14 }}>
+        <button className="ghost" onClick={() => { setListen((v) => !v); setLog([]) }}>{listen ? 'Отключить поток /stream' : 'Подключить поток /stream (SSE)'}</button>
+        <span className="t-note" style={{ margin: 0 }}>Статус: {live.status === 'online' ? 'онлайн' : live.status === 'connecting' ? 'подключение' : live.status === 'offline' ? 'нет связи' : 'выключен'}. После отправки пакета здесь появится событие update.</span>
+      </div>
+      {log.length > 0 && <div className="t-panel"><pre data-testid="live-log">{log.join('\n')}</pre></div>}
       {check && Array.isArray(check.data) && <Chart data={(check.data as Row[]).map((r) => ({ x: `${r.hour}ч`, Посадки: r.passengers }))} keys={['Посадки']} height={200} />}
     </>
   )

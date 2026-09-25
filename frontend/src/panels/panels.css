@@ -24,3 +24,9 @@
 .x-check{display:flex;gap:6px;align-items:center;font-size:11px;color:#556175;padding-bottom:6px}
 .x-empty{color:#9aa3b2;font-size:11px;padding:24px 0;text-align:center}
 .x-stop-title{font-family:Manrope,sans-serif;font-size:12px;font-weight:800;color:#29354a;margin:2px 0 2px}
+
+.x-live{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:8px 12px;border-radius:9px;background:#eef8f5;color:#0b6b50;font-size:12px}
+.x-live-offline,.x-live-connecting{background:#fff6e8;color:#8a5300}
+.x-live-dot{width:9px;height:9px;border-radius:50%;background:currentColor;flex:none}
+.x-live-online .x-live-dot{animation:x-pulse 1.6s ease-in-out infinite}
+@keyframes x-pulse{0%,100%{opacity:1}50%{opacity:.25}}
