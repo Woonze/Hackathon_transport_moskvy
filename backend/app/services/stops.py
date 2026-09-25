@@ -81,15 +81,19 @@ def segments(store: DataStore, kind: Kind, route: int, start: date, end: date, h
             "segments": out, "peak": max(out, key=lambda s: s["passengers"]) if out else None}
 
 
-def stop_series(store: DataStore, kind: Kind, stop_id: str, start: date, end: date, granularity: Granularity) -> dict:
+def stop_series(store: DataStore, kind: Kind, stop_id: str, start: date, end: date, granularity: Granularity,
+                route: int | None = None) -> dict:
+    series.resolve_route(store, route)
     shares = {
         r: sum(s["board_share"] for d in dirs.values() for s in d if s["stop_id"] == stop_id)
         for r, dirs in store.stops.items()
+        if route is None or r == route
     }
     shares = {r: v for r, v in shares.items() if v > 0}
     if not shares:
-        raise ApiError(404, f"Остановка {stop_id} не найдена", "stop_not_found")
-    series.validate(store, kind.value, start, end, None, granularity)
+        label = f" на маршруте {route}" if route is not None else ""
+        raise ApiError(404, f"Остановка {stop_id}{label} не найдена", "stop_not_found")
+    series.validate(store, kind.value, start, end, route, granularity)
     acc: dict[tuple, float] = {}
     for route, share in shares.items():
         for row in series.rows(store, _source(store, kind), start, end, route, granularity):

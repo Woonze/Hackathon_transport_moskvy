@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react'
+import React, { lazy, Suspense, useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
-import Tester from './Tester'
+
+const Tester = lazy(() => import('./Tester'))
 
 // Страница проверки API открывается по /#/tester
 function Root() {
@@ -11,7 +12,9 @@ function Root() {
     window.addEventListener('hashchange', onChange)
     return () => window.removeEventListener('hashchange', onChange)
   }, [])
-  return hash.startsWith('#/tester') ? <Tester /> : <App />
+  return hash.startsWith('#/tester')
+    ? <Suspense fallback={<div className="loading-card">Загружаем проверку API…</div>}><Tester /></Suspense>
+    : <App />
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

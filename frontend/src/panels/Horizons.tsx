@@ -17,8 +17,12 @@ export default function Horizons({ route }: { route: RouteId }) {
   const g = useDebounced(growth)
 
   useEffect(() => {
+    const controller = new AbortController()
     setError('')
-    getJson<YearResponse>(`/api/v1/forecast/year?growth=${g}${route === 'all' ? '' : `&route=${route}`}`).then(setResp).catch((e: Error) => setError(e.message))
+    getJson<YearResponse>(`/api/v1/forecast/year?growth=${g}${route === 'all' ? '' : `&route=${route}`}`, controller.signal)
+      .then(setResp)
+      .catch((e: Error) => { if (e.name !== 'AbortError') setError(e.message) })
+    return () => controller.abort()
   }, [route, g])
 
   const chart = useMemo(() => {

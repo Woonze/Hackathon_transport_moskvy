@@ -20,6 +20,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from backend.app.console import configure_console
+
 ROOT = Path(__file__).resolve().parents[1]
 EXT = ROOT / "artifacts" / "external"
 LABELS = [ROOT / "dataset" / "labels" / "labels_day_train.csv", ROOT / "dataset" / "labels" / "labels_day_test.csv"]
@@ -200,4 +202,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    configure_console()
     main()

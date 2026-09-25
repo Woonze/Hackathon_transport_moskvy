@@ -15,7 +15,7 @@ docker compose up --build          # http://localhost:8000  (другой пор
 | Интерактивная документация REST API (OpenAPI) | `http://localhost:8000/docs` |
 | Точки входа API | `http://localhost:8000/api/v1/...` (перечень ниже) |
 
-Один контейнер (ограничен 2 vCPU / 2 ГБ, как в требованиях), без внешних зависимостей во время работы: данные, справочники и внешние источники лежат в образе. Стек: Python 3.12 / FastAPI (тот же язык, что и ML-контур, без сериализации модели между JVM и Python), React 19 + TypeScript 5, Leaflet, Docker Compose. Замеры производительности — ниже.
+Один контейнер (ограничен 2 vCPU / 2 ГБ, как в требованиях). API и прогноз работают без внешних запросов к источникам данных: данные, справочники и архивные внешние факторы входят в образ. Для подложки карты нужны тайлы OpenStreetMap; веб-шрифт загружается с Google Fonts, а без сети используются системные шрифты. Стек: Python 3.12 / FastAPI (тот же язык, что и ML-контур, без сериализации модели между JVM и Python), React 19 + TypeScript 5, Leaflet, Docker Compose. Замеры производительности — ниже.
 
 ## Результат модели
 
@@ -79,10 +79,12 @@ npm run build
 cd ..
 python backend\build_map_data.py
 python -m backend.build_stops
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
 На macOS/Linux то же самое: `python3 -m venv .venv && source .venv/bin/activate`, слеши вместо обратных.
+
+Для доступа из локальной сети или публичного сервера используйте `--host 0.0.0.0` только вместе с `INGEST_API_KEY` и настройкой обратного прокси/фаервола.
 
 Откройте `http://localhost:8000` (сборка фронта работает на Node 20+), интерактивная документация API — `http://localhost:8000/docs`. API и собранный интерфейс работают на одном порту. Для разработки фронта с hot reload: `cd frontend && npm run dev`, затем `http://localhost:5173` (адрес бэкенда для прокси — `VITE_API_TARGET`, по умолчанию `http://127.0.0.1:8000`).
 
@@ -94,11 +96,11 @@ python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 
 ## Docker
 
-Рекомендуемый способ — `docker compose up --build` (см. `docker-compose.yml`: том для принятых данных, лимиты 2 vCPU / 2 ГБ, healthcheck, порт через `TRAM_PORT`, ключ приёма данных через `INGEST_API_KEY`). Без Compose:
+Рекомендуемый способ — `docker compose up --build` (см. `docker-compose.yml`: том для принятых данных, лимиты 2 vCPU / 2 ГБ, healthcheck, порт через `TRAM_PORT`, адрес привязки через `TRAM_BIND`). По умолчанию сервис доступен только на этой машине. Для публикации за reverse proxy используйте `TRAM_BIND=127.0.0.1`; для прямого сетевого доступа задайте `TRAM_BIND=0.0.0.0` и обязательно `INGEST_API_KEY=<секретный-ключ>`. Без Compose привязывайте порт к loopback:
 
 ```bash
 docker build -t moskvy-tram-forecast .
-docker run --rm -p 8000:8000 moskvy-tram-forecast
+docker run --rm -p 127.0.0.1:8000:8000 moskvy-tram-forecast
 ```
 
 Образ включает API, React build, компактные разметки, справочные артефакты и прогноз. Исходные `train.csv`/`test.csv` (около 10 ГБ) в образ не входят. Два Uvicorn-воркера. Чтобы принятые через API валидации переживали пересоздание контейнера, смонтируйте том и укажите файл:

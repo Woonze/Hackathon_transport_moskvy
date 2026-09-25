@@ -49,11 +49,36 @@ def test_segments_have_midroute_peak(client):
 def test_stop_series_matches_flow(client):
     flow = client.get("/api/v1/stops/flow?route=1&start=2025-11-03&end=2025-11-09").json()
     stop = flow["stops"][3]
-    ser = client.get(f"/api/v1/stops/{stop['stop_id']}/series?start=2025-11-03&end=2025-11-09").json()
+    ser = client.get(f"/api/v1/stops/{stop['stop_id']}/series?route=1&start=2025-11-03&end=2025-11-09").json()
     expected = sum(s["boardings"] for s in flow["stops"] if s["stop_id"] == stop["stop_id"])
     assert len(ser["data"]) == 7 and abs(sum(p["passengers"] for p in ser["data"]) - expected) <= 8
     hourly = client.get(f"/api/v1/stops/{stop['stop_id']}/series?start=2025-11-03&end=2025-11-03&granularity=hour").json()
     assert len(hourly["data"]) == 24 and {"date", "hour", "passengers"} <= set(hourly["data"][0])
+
+
+def test_stop_series_can_filter_a_shared_stop_by_route(client):
+    route_7 = client.get("/api/v1/stops?route=7").json()["stops"]
+    route_11_ids = {s["stop_id"] for s in client.get("/api/v1/stops?route=11").json()["stops"]}
+    stop = next(s for s in route_7 if s["stop_id"] in route_11_ids)
+    params = "start=2025-11-03&end=2025-11-09"
+
+    route_only = client.get(f"/api/v1/stops/{stop['stop_id']}/series?{params}&route=7").json()
+    all_routes = client.get(f"/api/v1/stops/{stop['stop_id']}/series?{params}").json()
+
+    assert route_only["routes"] == [7]
+    assert set(all_routes["routes"]) == {7, 11}
+    assert sum(p["passengers"] for p in all_routes["data"]) > sum(p["passengers"] for p in route_only["data"])
+
+
+def test_route_filtered_stop_series_uses_single_route_hour_limit(client):
+    stop = client.get("/api/v1/stops?route=7").json()["stops"][0]
+    base = f"/api/v1/stops/{stop['stop_id']}/series?start=2025-11-01&end=2025-12-31&granularity=hour"
+
+    route_only = client.get(f"{base}&route=7")
+    all_routes = client.get(base)
+
+    assert route_only.status_code == 200 and len(route_only.json()["data"]) == 61 * 24
+    assert all_routes.status_code == 422 and all_routes.json()["code"] == "range_too_wide"
 
 
 @pytest.mark.parametrize("url,status,code", [
@@ -64,6 +89,7 @@ def test_stop_series_matches_flow(client):
     ("/api/v1/stops/flow?route=7&hour_to=30", 422, "validation_error"),
     ("/api/v1/stops/segments?route=25", 404, "stops_not_available"),
     ("/api/v1/stops/000/series", 404, "stop_not_found"),
+    ("/api/v1/stops/3614/series?route=99", 404, "route_not_found"),
     ("/api/v1/stops/flow?route=7&start=2030-01-01&end=2030-01-02", 422, "out_of_range"),
 ])
 def test_stops_errors(client, url, status, code):

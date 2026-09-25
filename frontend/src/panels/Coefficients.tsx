@@ -21,7 +21,13 @@ export default function Coefficients({ route }: { route: RouteId }) {
   const [result, setResult] = useState<Adjusted | null>(null)
   const [error, setError] = useState('')
 
-  useEffect(() => { getJson<Presets>('/api/v1/factors').then(setPresets).catch(() => undefined) }, [])
+  useEffect(() => {
+    const controller = new AbortController()
+    getJson<Presets>('/api/v1/factors', controller.signal)
+      .then(setPresets)
+      .catch((e: Error) => { if (e.name !== 'AbortError') setError(e.message) })
+    return () => controller.abort()
+  }, [])
 
   const days = lastDay(2025, month)
   const body = useDebounced(useMemo(() => {
@@ -33,8 +39,12 @@ export default function Coefficients({ route }: { route: RouteId }) {
   }, [month, days, factors, ruleOn, rule, route, calendar]), 300)
 
   useEffect(() => {
+    const controller = new AbortController()
     setError('')
-    postJson<Adjusted>('/api/v1/forecast/adjusted', JSON.parse(body)).then(setResult).catch((e: Error) => setError(e.message))
+    postJson<Adjusted>('/api/v1/forecast/adjusted', JSON.parse(body), controller.signal)
+      .then(setResult)
+      .catch((e: Error) => { if (e.name !== 'AbortError') setError(e.message) })
+    return () => controller.abort()
   }, [body])
 
   const chart = useMemo(() => {

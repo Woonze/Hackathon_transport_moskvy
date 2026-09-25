@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from analysis import external_effects as E
+from backend.app.console import configure_console
 
 CALIB = 1.086
 WINDOWS = [("Янв–апр → май–июнь", "2025-05-01", "2025-06-30"), ("Янв–июнь → июль–авг", "2025-07-01", "2025-08-31"), ("Янв–авг → сен–окт", "2025-09-01", "2025-10-31"), ("Янв–сен → октябрь", "2025-10-01", "2025-10-31")]
@@ -149,5 +150,6 @@ def forecast_period() -> None:
 
 
 if __name__ == "__main__":
+    configure_console()
     main()
     forecast_period()

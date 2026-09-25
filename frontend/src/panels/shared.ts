@@ -13,9 +13,10 @@ async function parse<T>(r: Response): Promise<T> {
   return body as T
 }
 
-export const getJson = <T,>(url: string): Promise<T> => fetch(API + url).then((r) => parse<T>(r))
-export const postJson = <T,>(url: string, body: unknown): Promise<T> =>
-  fetch(API + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => parse<T>(r))
+export const getJson = <T,>(url: string, signal?: AbortSignal): Promise<T> =>
+  fetch(API + url, signal ? { signal } : undefined).then((r) => parse<T>(r))
+export const postJson = <T,>(url: string, body: unknown, signal?: AbortSignal): Promise<T> =>
+  fetch(API + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal }).then((r) => parse<T>(r))
 
 export function useDebounced<T>(value: T, ms = 250): T {
   const [v, setV] = useState(value)
