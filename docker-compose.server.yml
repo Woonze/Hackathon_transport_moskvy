@@ -31,13 +31,11 @@ services:
       AUTH_COOKIE_PATH: /tram
       APP_ROOT_PATH: /tram
       INGEST_FILE: /data/ingested.csv
-      CORS_ORIGINS: https://pigmentmusic.world
+      CORS_ORIGINS: https://mos.fotur.tech
     volumes:
       - ingest_data:/data
     networks:
       database: {}
-      edge:
-        aliases: [tram-app]
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,6 +56,3 @@ volumes:
 networks:
   database:
     internal: true
-  edge:
-    external: true
-    name: pigment_default
