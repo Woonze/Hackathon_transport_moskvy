@@ -1,0 +1,21 @@
+{
+	admin off
+	auto_https off
+}
+
+mos.fotur.tech:8443 {
+	@site_root path /
+	redir @site_root /tram/ 308
+	tls /etc/letsencrypt/live/mos.fotur.tech/fullchain.pem /etc/letsencrypt/live/mos.fotur.tech/privkey.pem
+	encode zstd gzip
+
+	handle /tram {
+		redir /tram/ 308
+	}
+
+	handle_path /tram/* {
+		reverse_proxy tram:8000
+	}
+
+	respond "Not found" 404
+}

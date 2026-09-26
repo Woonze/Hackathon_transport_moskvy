@@ -35,7 +35,7 @@ docker compose up --build          # http://localhost:8000  (другой пор
 1. Склонируйте репозиторий в `/opt/hackathon-transport-moskvy`.
 2. В этой папке запустите `python3 -m backend.setup_env --server`; мастер интерактивно спросит логин/пароль и создаст файл `.env` с правами `0600`.
 3. Запустите `docker compose -p moskvy-tram -f docker-compose.server.yml up -d --build`.
-4. Для публикации настройте независимый HTTPS-вход для домена проекта. Не подключайте контейнеры к сетям и прокси других проектов на сервере.
+4. Публичный HTTPS-вход проекта работает отдельно на `https://mos.fotur.tech:8443/tram/`; порт `8443/tcp` должен быть разрешён в firewall. TLS-сертификат выпускается через DNS-01 для `_acme-challenge.mos.fotur.tech`.
 
 `AUTH_COOKIE_SECURE=true`, cookie SameSite Strict и HttpOnly. Для смены пароля остановите стек, удалите приватный `.env`, снова запустите мастер и пересоздайте контейнер приложения; старые сессии будут отвергнуты после ротации токена или истечения срока.
 

@@ -25,3 +25,4 @@ artifacts/*
 !artifacts/stops.json
 !artifacts/external/
 !artifacts/external/*
+/certs/

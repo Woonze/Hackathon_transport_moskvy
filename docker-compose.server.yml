@@ -31,7 +31,7 @@ services:
       AUTH_COOKIE_PATH: /tram
       APP_ROOT_PATH: /tram
       INGEST_FILE: /data/ingested.csv
-      CORS_ORIGINS: https://mos.fotur.tech
+      CORS_ORIGINS: https://mos.fotur.tech:8443
     volumes:
       - ingest_data:/data
     networks:
@@ -49,6 +49,20 @@ services:
     cpus: 2.0
     mem_limit: 2g
 
+  ingress:
+    image: caddy:2-alpine
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/letsencrypt:ro
+    networks: [database]
+    depends_on:
+      tram:
+        condition: service_healthy
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 256m
 volumes:
   postgres_data:
   ingest_data:
