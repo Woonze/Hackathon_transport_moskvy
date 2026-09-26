@@ -82,3 +82,12 @@ def test_health_reports_data_freshness(client):
     assert "data_updated_at" in h and h["ingested_boardings"] == 0
     assert h["ml_model"]["name"] == "HistGradientBoostingRegressor"
     assert h["ml_model"]["training_rows"] > 0
+
+
+def test_version_supports_postgres_revision_and_file_stamp():
+    """С PostgreSQL отпечаток данных — целое число ревизии, без БД — кортеж (mtime, размер); поток не должен падать ни на одном."""
+    from backend.app.services.live import _version
+
+    assert _version(None) == "0"
+    assert _version((255, 7)) == "ff-7"
+    assert _version(12) == "r12"

@@ -11,12 +11,19 @@ from .. import config
 from ..store import DataStore
 
 
+def _version(stamp: object) -> str:
+    """Отпечаток данных: (mtime, размер) файла принятых данных без БД или номер ревизии в PostgreSQL."""
+    if stamp is None:
+        return "0"
+    if isinstance(stamp, tuple):
+        return f"{stamp[0]:x}-{stamp[1]}"
+    return f"r{stamp}"
+
+
 def snapshot(store: DataStore) -> dict:
     """Текущее состояние данных: version меняется, когда любой воркер принял новые валидации."""
-    stamp = store._stamp
-    version = "0" if stamp is None else f"{stamp[0]:x}-{stamp[1]}"
     return {
-        "version": version,
+        "version": _version(store._stamp),
         "history_end": store.history_end.isoformat(),
         "ingested_boardings": store.ingested_boardings,
         "updated_at": store.updated_at.isoformat(timespec="seconds"),
