@@ -21,15 +21,14 @@ services:
     build:
       context: .
       args:
-        VITE_BASE: /tram/
-        VITE_API_URL: /tram
+        VITE_BASE: /
+        VITE_API_URL: ""
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@tram-database:5432/${POSTGRES_DB}
       AUTH_USERNAME: ${AUTH_USERNAME:?Create the private .env first}
       AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:?Create the private .env first}
       AUTH_COOKIE_SECURE: "true"
-      AUTH_COOKIE_PATH: /tram
-      APP_ROOT_PATH: /tram
+      AUTH_COOKIE_PATH: /
       INGEST_FILE: /data/ingested.csv
       CORS_ORIGINS: https://mos.fotur.tech:8443
     volumes:

@@ -12,7 +12,7 @@ from backend.app.services.security import hash_password
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--server", action="store_true", help="Set secure cookies and the /tram URL prefix")
+    parser.add_argument("--server", action="store_true", help="Set secure cookies for production")
     parser.add_argument("--output", type=Path, default=Path(".env"))
     args = parser.parse_args()
 
@@ -33,7 +33,7 @@ def main() -> None:
             f"AUTH_USERNAME={username}",
             f"AUTH_PASSWORD_HASH={encoded_hash}",
             f"AUTH_COOKIE_SECURE={'true' if args.server else 'false'}",
-            f"AUTH_COOKIE_PATH={'/tram' if args.server else '/'}",
+            "AUTH_COOKIE_PATH=/",
             "",
         )
     )
