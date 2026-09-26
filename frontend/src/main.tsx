@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 
 const Tester = lazy(() => import('./Tester'))
-const Stands = lazy(() => import('./Stands'))
 
 // Страница проверки API открывается по /#/tester
 function Root() {
@@ -13,9 +12,9 @@ function Root() {
     window.addEventListener('hashchange', onChange)
     return () => window.removeEventListener('hashchange', onChange)
   }, [])
-  if (hash.startsWith('#/tester')) return <Suspense fallback={<div className="loading-card">Загружаем проверку API…</div>}><Tester /></Suspense>
-  if (hash.startsWith('#/stands')) return <Suspense fallback={<div className="stands-loading">Загружаем UX-макеты…</div>}><Stands /></Suspense>
-  return <App />
+  return hash.startsWith('#/tester')
+    ? <Suspense fallback={<div className="loading-card">Загружаем проверку API…</div>}><Tester /></Suspense>
+    : <App />
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

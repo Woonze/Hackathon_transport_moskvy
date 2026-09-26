@@ -146,10 +146,10 @@ export default function Coefficients({ route }: { route: RouteId }) {
         <div className="x-chart">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chart} margin={{ top: 8, right: 8, left: -6, bottom: 0 }}>
-              <CartesianGrid stroke="#edf0f6" vertical={false} />
+              <CartesianGrid stroke="#1b2b3b" vertical={false} />
               <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#98a1b2', fontSize: 10 }} minTickGap={14} />
               <YAxis tickLine={false} axisLine={false} tick={{ fill: '#98a1b2', fontSize: 10 }} tickFormatter={(n) => (n >= 1000 ? `${Math.round(n / 1000)}к` : n)} />
-              <Tooltip formatter={(v) => `${fmt(Number(v))} посадок`} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
+              <Tooltip formatter={(v) => `${fmt(Number(v))} посадок`} contentStyle={{ border: '1px solid #26394d', background: '#0b1722', color: '#dce6f5', borderRadius: 8, fontSize: 11 }} />
               <Legend formatter={(n) => (n === 'base' ? 'Прогноз модели' : 'С коэффициентами')} wrapperStyle={{ fontSize: 11 }} />
               {(presets?.calendar.days ?? []).filter((d) => Number(d.slice(5, 7)) === month).map((d) => <ReferenceLine key={d} x={`${d.slice(8)}.${d.slice(5, 7)}`} stroke="#f0a339" strokeDasharray="3 3" label={{ value: 'праздник', fontSize: 9, fill: '#c98218', position: 'insideTopLeft' }} />)}
               <Line type="monotone" dataKey="base" stroke="#a9b6d3" strokeWidth={2} dot={false} isAnimationActive={false} />
