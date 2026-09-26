@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_DIR=/opt/hackathon-transport-moskvy
-CERT_FILE="$APP_DIR/certs/letsencrypt/live/mos.fotur.tech/fullchain.pem"
+CERT_FILE="/etc/letsencrypt/live/mos.fotur.tech/fullchain.pem"
 PIGMENT_COMPOSE=/opt/pigment/docker-compose.production.yml
 TRAM_COMPOSE="$APP_DIR/docker-compose.server.yml"
 
@@ -19,5 +19,5 @@ trap restore_services EXIT
 
 docker compose -f "$PIGMENT_COMPOSE" stop caddy
 docker run --rm -p 80:80 \
-  -v "$APP_DIR/certs/letsencrypt:/etc/letsencrypt" \
+  -v "/etc/letsencrypt:/etc/letsencrypt" \
   certbot/certbot renew --standalone --preferred-challenges http --quiet
