@@ -1,6 +1,8 @@
 """Замер без кэша: каждый запрос с новыми параметрами (маршрут, период, детализация).
 
     python backend/loadtest_cold.py [BASE_URL] [REQUESTS] [CONCURRENCY]
+
+API требует вход: задайте TRAM_USER и TRAM_PASSWORD, скрипт получит сессию.
 """
 import asyncio
 import os
@@ -34,6 +36,9 @@ async def main() -> None:
     urls, lat, srv, bad = [url() for _ in range(N)], [], [], 0
     sem = asyncio.Semaphore(C)
     async with httpx.AsyncClient(limits=httpx.Limits(max_connections=C)) as client:
+        if os.getenv('TRAM_USER'):
+            login = await client.post(f"{BASE}/api/auth/login", json={"username": os.environ['TRAM_USER'], "password": os.environ['TRAM_PASSWORD']})
+            login.raise_for_status()
         async def one(u: str) -> None:
             nonlocal bad
             async with sem:

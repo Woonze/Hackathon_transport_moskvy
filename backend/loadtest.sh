@@ -2,14 +2,27 @@
 # Нагрузочный замер через ApacheBench.  Использование:
 #   backend/loadtest.sh [BASE_URL] [REQUESTS] [CONCURRENCY]
 # По умолчанию http://localhost:8000, 20000 запросов, 64 соединения (keep-alive).
+# На macOS ab может не подключиться к localhost (IPv6): используйте http://127.0.0.1:8000.
+# API требует вход: задайте TRAM_USER и TRAM_PASSWORD, скрипт получит сессию и передаст её в запросах:
+#   TRAM_USER=fotur TRAM_PASSWORD='...' backend/loadtest.sh https://mos.fotur.tech:8443
 set -euo pipefail
 BASE=${1:-http://localhost:8000}; N=${2:-20000}; C=${3:-64}
-BODY=$(mktemp); trap 'rm -f "$BODY"' EXIT
+BODY=$(mktemp); JAR=$(mktemp); LOGIN=$(mktemp); trap 'rm -f "$BODY" "$JAR" "$LOGIN"' EXIT
+COOKIE=()
+if [[ -n "${TRAM_USER:-}" ]]; then
+  printf '{"username":"%s","password":"%s"}' "$TRAM_USER" "${TRAM_PASSWORD:?Задайте TRAM_PASSWORD}" > "$LOGIN"
+  code=$(curl -s -o /dev/null -w '%{http_code}' -c "$JAR" -X POST -H 'Content-Type: application/json' --data @"$LOGIN" "$BASE/api/auth/login")
+  [[ "$code" == 200 ]] || { echo "Не удалось войти: HTTP $code" >&2; exit 1; }
+  COOKIE=(-C "tram_session=$(awk '$6=="tram_session" {print $7}' "$JAR")")
+fi
 echo '{"route":7,"granularity":"day","factors":{"weather":0.95},"rules":[{"start":"2025-12-25","end":"2025-12-31","factor":0.8}]}' > "$BODY"
 
 run() {  # имя, аргументы ab...
   local name=$1; shift
-  local out; out=$(ab -k -q -n "$N" -c "$C" "$@" 2>&1)
+  local out
+  if ! out=$(ab -k -q -n "$N" -c "$C" ${COOKIE[@]+"${COOKIE[@]}"} "$@" 2>&1); then
+    echo "$name: ab завершился с ошибкой: $(tail -n 2 <<<"$out" | tr '\n' ' ')" >&2; return 0
+  fi
   printf '%-46s %6s rps  p50 %4s  p95 %4s  p99 %4s мс  ошибок %s  не-2xx %s\n' "$name" \
     "$(awk '/Requests per second/ {printf "%.0f", $4}' <<<"$out")" \
     "$(awk '/^ +50%/ {print $2}' <<<"$out")" "$(awk '/^ +95%/ {print $2}' <<<"$out")" "$(awk '/^ +99%/ {print $2}' <<<"$out")" \
