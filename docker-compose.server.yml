@@ -56,7 +56,7 @@ services:
     volumes:
       - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
-    networks: [database]
+    networks: [database, ingress_edge]
     depends_on:
       tram:
         condition: service_healthy
@@ -70,3 +70,4 @@ volumes:
 networks:
   database:
     internal: true
+  ingress_edge: {}
