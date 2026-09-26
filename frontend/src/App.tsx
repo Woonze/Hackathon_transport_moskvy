@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import { Activity, ArrowDownRight, FlaskConical, ArrowUpRight, CalendarDays, ChevronDown, Clock3, Route as RouteIcon, Sparkles, TramFront, Users, Zap } from 'lucide-react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Activity, Bell, Download, FlaskConical, CalendarDays, ChevronDown, Gauge, MapPinned, Route as RouteIcon, Search, Settings, Sparkles, TramFront, Users } from 'lucide-react'
 import type { FeatureCollection, LineString, MultiLineString } from 'geojson'
 import './styles.css'
 import type { ForecastPeriod } from './panels/FlowChart'
@@ -15,6 +15,8 @@ type TramRoute = { id: number; name: string; historical_total: number; forecast_
 type WeekdayAverage = { route: number; weekday: number; passengers: number }
 type Health = { status: 'ok' | 'error'; version: string }
 type RouteGeo = FeatureCollection<LineString | MultiLineString, { route: number; stop_count: number; stops: string[] }>
+type EventRisk = 'critical' | 'warning' | 'info'
+type MapMode = 'passengers' | 'overload' | 'deviation' | 'forecast'
 
 const API = import.meta.env.VITE_API_URL ?? ''
 const FORECAST_START = '2025-11-01'
@@ -51,6 +53,13 @@ function App() {
   const [navSection, setNavSection] = useState<'overview' | 'routes' | 'history'>('overview')
   const [selectedDate, setSelectedDate] = useState('2025-11-01')
   const [mode, setMode] = useState<ForecastPeriod>('month')
+  const [mapMode, setMapMode] = useState<MapMode>('passengers')
+  const [eventFilter, setEventFilter] = useState<'all' | EventRisk>('all')
+  const [eventSort, setEventSort] = useState<'priority' | 'load' | 'route'>('priority')
+  const [detailTab, setDetailTab] = useState<'overview' | 'stops' | 'segments'>('overview')
+  const [search, setSearch] = useState('')
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
   const [dailyLoading, setDailyLoading] = useState(true)
   const [hourlyLoading, setHourlyLoading] = useState(true)
   const [referenceError, setReferenceError] = useState('')
@@ -98,7 +107,8 @@ function App() {
     return () => controller.abort()
   }, [selectedDate])
 
-  const visibleForecast = useMemo(() => forecast.filter((row) => Number(row.date.slice(5, 7)) === month && (route === 'all' || row.route === route)), [forecast, month, route])
+  const monthForecast = useMemo(() => forecast.filter((row) => Number(row.date.slice(5, 7)) === month), [forecast, month])
+  const visibleForecast = useMemo(() => monthForecast.filter((row) => route === 'all' || row.route === route), [monthForecast, route])
   const dateRows = useMemo(() => dateForecast.filter((row) => route === 'all' || row.route === route), [dateForecast, route])
   const dayTotal = dateRows.reduce((sum, row) => sum + row.passengers, 0)
   const hourlyDayRows = useMemo(() => Array.from({ length: 24 }, (_, hour) => ({ route: 0, date: selectedDate, hour, passengers: dateRows.filter((row) => row.hour === hour).reduce((sum, row) => sum + row.passengers, 0) })), [dateRows, selectedDate])
@@ -132,7 +142,31 @@ function App() {
     : mode === 'week'
       ? `посадок · ${dateLabel(selectedDate)} — ${dateLabel(weekEnd)}`
       : `посадок за ${monthNames[month - 1].toLowerCase()}`
-  const routeRanking = useMemo(() => routes.map((item) => ({ ...item, value: visibleForecast.filter((row) => row.route === item.id).reduce((sum, row) => sum + row.passengers, 0) })).sort((a, b) => b.value - a.value), [routes, visibleForecast])
+  const routeRanking = useMemo(() => routes.map((item) => ({ ...item, value: monthForecast.filter((row) => row.route === item.id).reduce((sum, row) => sum + row.passengers, 0) })).sort((a, b) => b.value - a.value), [routes, monthForecast])
+  const routeEvents = useMemo(() => routeRanking.map((item) => {
+    const historicalMonthAverage = item.historical_total / 10
+    const change = historicalMonthAverage > 0 ? (item.value / historicalMonthAverage - 1) * 100 : null
+    const risk: EventRisk = change !== null && change >= 8 ? 'critical' : change !== null && change >= 2 ? 'warning' : 'info'
+    return { ...item, change, risk }
+  }), [routeRanking])
+  const eventCounts = useMemo(() => ({
+    critical: routeEvents.filter((item) => item.risk === 'critical').length,
+    warning: routeEvents.filter((item) => item.risk === 'warning').length,
+  }), [routeEvents])
+  const matchingStopRoutes = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('ru-RU')
+    if (!query) return new Set<number>()
+    return new Set(geo.features.filter((feature) => feature.properties.stops.some((stop) => stop.toLocaleLowerCase('ru-RU').includes(query))).map((feature) => feature.properties.route))
+  }, [geo, search])
+  const visibleEvents = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('ru-RU')
+    const priority: Record<EventRisk, number> = { critical: 0, warning: 1, info: 2 }
+    return routeEvents
+      .filter((item) => eventFilter === 'all' || item.risk === eventFilter)
+      .filter((item) => !query || String(item.id).includes(query) || item.name.toLocaleLowerCase('ru-RU').includes(query) || matchingStopRoutes.has(item.id))
+      .sort((a, b) => eventSort === 'route' ? a.id - b.id : eventSort === 'load' ? b.value - a.value : priority[a.risk] - priority[b.risk] || b.value - a.value)
+  }, [routeEvents, eventFilter, eventSort, search, matchingStopRoutes])
+  const mapMetrics = useMemo(() => Object.fromEntries(routeEvents.map((item) => [item.id, { value: item.value, delta: item.change ?? 0 }])), [routeEvents])
   const exportFile = (fmt: 'csv' | 'xlsx') => {
     const monthStart = `2025-${String(month).padStart(2, '0')}-01`
     const monthEnd = `2025-${String(month).padStart(2, '0')}-${String(new Date(2025, month, 0).getDate()).padStart(2, '0')}`
@@ -164,45 +198,66 @@ function App() {
     if (mode === 'week' && selectedDate > WEEK_LAST_START) setSelectedDate(WEEK_LAST_START)
   }, [mode, selectedDate])
 
+  useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      if (event.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'SELECT') {
+        event.preventDefault()
+        searchRef.current?.focus()
+      }
+      if (event.key === 'Escape') {
+        setNotificationsOpen(false)
+        searchRef.current?.blur()
+      }
+    }
+    window.addEventListener('keydown', focusSearch)
+    return () => window.removeEventListener('keydown', focusSearch)
+  }, [])
+
+  const selectedRoute = routeRanking.find((item) => item.id === route) ?? routeRanking[0]
+  const selectedFeature = geo.features.find((feature) => feature.properties.route === selectedRoute?.id)
+  const selectedStops = selectedFeature?.properties.stops ?? []
+  const selectSearchResult = () => {
+    const match = visibleEvents[0]
+    if (match) {
+      setRoute(match.id)
+      setSearch('')
+    }
+  }
+  const showRouteOnMap = () => {
+    if (route === 'all' && selectedRoute) setRoute(selectedRoute.id)
+    document.querySelector('.ops-grid .map-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
   return <div className="app-shell">
+    <header className="topbar">
+      <div className="brand"><div className="brand-mark"><TramFront size={22} /></div><div><strong>МосТрам</strong><span>Прогноз пассажиропотока</span></div></div>
+      <label className="global-search"><Search size={16} /><input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') selectSearchResult() }} aria-label="Поиск" placeholder="Поиск маршрута или остановки..." /><kbd>/</kbd><span>{search ? `${visibleEvents.length} найдено · Enter` : 'для быстрого поиска'}</span></label>
+      <div className="period-tabs"><button className={mode === 'day' ? 'active' : ''} onClick={() => setMode('day')}>24 часа</button><button className={mode === 'week' ? 'active' : ''} onClick={() => setMode('week')}>Неделя</button><button className={mode === 'month' ? 'active' : ''} onClick={() => setMode('month')}>Месяц</button></div>
+      <div className="top-actions"><div className="data-state"><span className={`live-dot ${error ? 'offline' : ''}`} /><div>Данные обновлены<b>{loading ? 'загружаем…' : 'только что'}</b></div></div><div className="clock">14:28<span>{dateLabel(selectedDate)}</span></div><div className="notification-wrap"><button className={`bell ${notificationsOpen ? 'active' : ''}`} aria-label="Уведомления" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}><Bell size={17} /><i>{eventCounts.critical}</i></button>{notificationsOpen && <div className="notification-popover"><div className="notification-title">Критические события <button onClick={() => setNotificationsOpen(false)}>×</button></div>{routeEvents.filter((item) => item.risk === 'critical').slice(0, 3).map((item) => <button key={item.id} onClick={() => { setRoute(item.id); setNotificationsOpen(false) }}><span className="status-light offline" /><div><b>Маршрут {item.id}</b><small>Прогнозное изменение {item.change === null ? '—' : `${item.change > 0 ? '+' : ''}${item.change.toFixed(1)}%`}</small></div></button>)}{eventCounts.critical === 0 && <p>Критических событий нет</p>}</div>}</div><div className="top-avatar">ДС</div><div className="dispatcher"><b>Диспетчер</b><span>Смена №2</span></div></div>
+    </header>
     <aside className="sidebar">
-      <div className="brand"><div className="brand-mark"><TramFront size={21} strokeWidth={2.2} /></div><div><strong>МОС.ТРАМ</strong><span>АНАЛИТИКА ПОТОКА</span></div></div>
-      <div className="nav-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
-      <button aria-label="Обзор пассажиропотока" title="Обзор пассажиропотока" className={`nav-item ${navSection === 'overview' ? 'active' : ''}`} onClick={() => navigateTo('overview', 'overview')}><Activity size={18} /><span>Обзор пассажиропотока</span>{navSection === 'overview' && <span className="active-dot" />}</button>
-      <button aria-label="Маршруты" title="Маршруты" className={`nav-item ${navSection === 'routes' ? 'active' : ''}`} onClick={() => navigateTo('routes', 'routes')}><RouteIcon size={18} /><span>Маршруты</span><span className="nav-soon">10</span></button>
-      <button aria-label="История данных" title="История данных" className={`nav-item ${navSection === 'history' ? 'active' : ''}`} onClick={() => navigateTo('history', 'history')}><CalendarDays size={18} /><span>История данных</span></button>
-      <a className="nav-item" href="#/tester" aria-label="Проверка API" title="Проверка API" style={{ textDecoration: 'none', color: 'inherit' }}><FlaskConical size={18} /><span>Проверка API</span></a>
-      <div className="side-bottom"><div className="system-card"><div className="system-row"><span className={`status-light ${health?.status === 'ok' ? '' : 'offline'}`} /> {health?.status === 'ok' ? 'Сервис доступен' : 'Проверяем сервис'}</div><p>Горизонт прогноза<br />01 ноя — 31 дек 2025</p><div className="system-foot"><span>API {health?.version ?? '—'}</span><span className="spark"><Sparkles size={13} /> ML</span></div></div><div className="user-row"><div className="avatar">ЕД</div><div><strong>Диспетчер ЕДЦ</strong><span>Москва · Трамвай</span></div></div></div>
+      <nav>
+        <button className={`nav-item ${navSection === 'overview' ? 'active' : ''}`} onClick={() => navigateTo('overview', 'overview')}><Gauge size={18} /><span>Оперативный центр</span></button>
+        <button className={`nav-item ${navSection === 'routes' ? 'active' : ''}`} onClick={() => navigateTo('routes', 'routes')}><RouteIcon size={18} /><span>Маршруты</span></button>
+        <button className={`nav-item ${navSection === 'history' ? 'active' : ''}`} onClick={() => navigateTo('history', 'history')}><Activity size={18} /><span>Прогнозы</span></button>
+        <button className="nav-item" onClick={() => exportFile('xlsx')}><Download size={18} /><span>Экспорт и отчёты</span></button>
+        <a className="nav-item" href="#/tester"><FlaskConical size={18} /><span>Проверка API</span></a>
+        <button className="nav-item" onClick={() => document.getElementById('settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><Settings size={18} /><span>Настройки сценария</span></button>
+      </nav>
+      <div className="side-bottom"><div className="system-card"><small>Статус системы</small><div className="system-row"><span className={`status-light ${health?.status === 'ok' ? '' : 'offline'}`} /> {health?.status === 'ok' ? 'В норме' : 'Проверка'}</div><dl><div><dt>API</dt><dd>{health?.version ?? '—'}</dd></div><div><dt>Маршрутов</dt><dd>{routes.length}</dd></div><div><dt>ML</dt><dd>активна</dd></div></dl></div><div className="city-sign"><div className="brand-mark"><MapPinned size={17} /></div><span>Московский<br />метрополитен</span></div></div>
     </aside>
-
-    <main className="main-content">
-      <header className="topbar"><div className="crumbs">Аналитика <span>/</span> <b>Пассажиропоток</b></div><div className="top-actions"><div className="live-pill"><span className={`live-dot ${error ? 'offline' : ''}`} /> {error ? 'Ошибка загрузки' : loading ? 'Загрузка прогноза' : 'Прогноз готов'}</div><a className="icon-button" title="Открыть справку API" href="/docs" target="_blank" rel="noreferrer"><span>?</span></a><div className="top-avatar">ЕД</div></div></header>
-      <div className="content-wrap">
-        <section className="page-heading" id="overview"><div><div className="eyebrow"><span className="eyebrow-line" /> ПЛАНИРОВАНИЕ · НОЯБРЬ—ДЕКАБРЬ 2025</div><h1>Пассажиропоток трамваев</h1><p>Прогноз на сутки, неделю и месяц с требуемой детализацией</p></div><div className="heading-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="secondary-button" onClick={() => exportFile('csv')} title="Экспорт прогноза для выбранного горизонта"><span className="export-icon">↧</span> CSV</button><button className="secondary-button" onClick={() => exportFile('xlsx')} title="Экспорт прогноза для выбранного горизонта с листом «Сводка»"><span className="export-icon">↧</span> XLSX</button></div></section>
-        <section className="toolbar"><div className="toolbar-group"><div className="toolbar-caption">МЕСЯЦ</div><div className="month-switch"><button className={month === 11 ? 'selected' : ''} onClick={() => setMonth(11)}>Ноябрь</button><button className={month === 12 ? 'selected' : ''} onClick={() => setMonth(12)}>Декабрь</button></div></div><div className="toolbar-separator" /><label className="select-wrap"><span className="toolbar-caption">МАРШРУТ</span><div className="select-control"><RouteIcon size={16} /><select value={route} onChange={(e) => setRoute(e.target.value === 'all' ? 'all' : Number(e.target.value))}><option value="all">Все маршруты</option>{routes.map((item) => <option key={item.id} value={item.id}>Трамвай {item.id}</option>)}</select><ChevronDown size={15} /></div></label><div className="toolbar-separator" /><label className="select-wrap date-select"><span className="toolbar-caption">ДАТА / НАЧАЛО НЕДЕЛИ</span><div className="select-control"><CalendarDays size={16} /><select value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}>{Array.from({ length: mode === 'week' && month === 12 ? 25 : new Date(2025, month, 0).getDate() }, (_, i) => { const d = `2025-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`; return <option key={d} value={d}>{dateLabel(d, true)}</option> })}</select><ChevronDown size={15} /></div></label><div className="updated-label"><span className={`live-dot ${health?.status === 'ok' ? '' : 'offline'}`} /> Статус API<br /><b>{health ? `Версия ${health.version}` : 'Проверка…'}</b></div></section>
-
-        {error && <div className="error-banner">Не удалось загрузить данные: {error}. Убедитесь, что сервис доступен.</div>}
-        {selectedRouteHasNoHistory && <div className="info-banner" role="status">По маршруту {route} в исходных данных нет исторических наблюдений. Нулевые значения прогноза сохранены как в шаблоне организаторов и не означают подтверждённое отсутствие пассажиров.</div>}
-        {loading && <div className="loading-card"><div className="loader" /> Загружаем прогноз и справочники…</div>}
-
-        <section className="kpi-grid">
-          <article className="kpi-card primary-kpi"><div className="kpi-top"><div className="kpi-icon blue"><Users size={18} /></div><span className="kpi-tag"><Sparkles size={12} /> ПРОГНОЗ</span></div><div className="kpi-label">Посадки за выбранный день</div><div className="kpi-value">{format(dayTotal)} <small>пасс.</small></div><div className="kpi-foot"><span className={delta >= 0 ? 'trend positive' : 'trend negative'}>{delta >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}{Math.abs(delta).toFixed(1)}%</span><span>к среднему за похожий день</span></div></article>
-          <article className="kpi-card"><div className="kpi-top"><div className="kpi-icon purple"><Clock3 size={18} /></div><span className="kpi-tag muted">ПИКОВАЯ НАГРУЗКА</span></div><div className="kpi-label">Час максимального потока</div><div className="kpi-value">{String(peak.hour).padStart(2, '0')}:00 <small>— {String((peak.hour + 1) % 24).padStart(2, '0')}:00</small></div><div className="kpi-foot"><span className="foot-dot purple-dot" /> <b>{format(peak.passengers)}</b><span>посадок за час</span></div></article>
-          <article className="kpi-card"><div className="kpi-top"><div className="kpi-icon mint"><CalendarDays size={18} /></div><span className="kpi-tag muted">{monthNames[month - 1].toUpperCase()} 2025</span></div><div className="kpi-label">Прогноз за месяц</div><div className="kpi-value">{format(allMonthTotal)} <small>пасс.</small></div><div className="kpi-foot"><span className="foot-dot green-dot" /> <b>{dailyChart.length}</b><span>дней в расчёте</span></div></article>
-          <article className="kpi-card"><div className="kpi-top"><div className="kpi-icon orange"><Zap size={18} /></div><span className="kpi-tag muted">ГОРИЗОНТ</span></div><div className="kpi-label">Текущий режим</div><div className="kpi-value">{mode === 'day' ? '24' : mode === 'week' ? '7' : dailyChart.length} <small>{mode === 'day' ? 'часа' : mode === 'week' ? 'дней' : 'дней'}</small></div><div className="kpi-foot"><span className="foot-dot orange-dot" /> <b>{mode === 'day' ? 'по часам' : 'по дням'}</b><span>детализация</span></div></article>
-        </section>
-
-        <section className="main-grid">
-          <Suspense fallback={<div className="panel map-panel loading-card" />}><OverviewMap route={route} geo={geo} /></Suspense>
-          <Suspense fallback={<div className="panel flow-panel loading-card" />}><FlowChart mode={mode} data={chartData} total={format(chartTotal)} caption={chartCaption} format={format} onModeChange={setMode} /></Suspense>
-        </section>
-
-        <section className="bottom-grid"><article className="panel ranking-panel" id="routes"><div className="panel-heading"><div><div className="panel-title">Загрузка маршрутов</div><div className="panel-subtitle">Прогноз посадок · {monthNames[month - 1].toLowerCase()} 2025</div></div><button className="text-action" onClick={() => setRoute('all')}>Все маршруты <span>→</span></button></div><div className="ranking-list">{routeRanking.map((item, index) => <button className={`ranking-row ${route === item.id ? 'chosen' : ''}`} key={item.id} onClick={() => setRoute(route === item.id ? 'all' : item.id)}><span className="rank-num">{String(index + 1).padStart(2, '0')}</span><span className="route-number" style={{ color: routeColors[item.id], background: `${routeColors[item.id]}13` }}>{item.id}</span><span className="rank-bar-track"><span className="rank-bar-fill" style={{ width: `${routeRanking[0]?.value ? item.value / routeRanking[0].value * 100 : 0}%`, background: routeColors[item.id] }} /></span><span className="rank-value">{item.historical_total === 0 ? '—' : format(item.value)}</span><span className="rank-label">{item.historical_total === 0 ? 'нет истории' : 'посадок'}</span></button>)}</div><div className="ranking-footer">Выберите маршрут, чтобы отфильтровать карту и прогноз</div></article><article className="panel day-panel"><div className="panel-heading"><div><div className="panel-title">Почасовой прогноз</div><div className="panel-subtitle">{dateLabel(selectedDate, true)}</div></div><div className="date-chip"><CalendarDays size={14} /> {monthNames[month - 1]}</div></div><div className="hour-list">{hourlyDayRows.filter((row) => row.hour >= 5 && row.hour <= 23).map((row) => { const max = Math.max(...hourlyDayRows.map((r) => r.passengers), 1); return <div className={`hour-row ${row.hour === peak.hour ? 'peak-row' : ''}`} key={row.hour}><span className="hour-time">{String(row.hour).padStart(2, '0')}:00</span><span className="hour-bar-bg"><span className="hour-bar" style={{ width: `${row.passengers / max * 100}%` }} /></span><span className="hour-value">{format(row.passengers)}</span>{row.hour === peak.hour && <span className="peak-label">ПИК</span>}</div> })}</div><div className="day-total"><span>Итого за день</span><strong>{format(dayTotal)} <small>посадок</small></strong></div></article></section>
-        <Suspense fallback={<div className="loading-card">Загружаем аналитику остановок…</div>}><StopsMap route={route} routeSummaries={routes} /></Suspense>
-        <div id="history"><Suspense fallback={<div className="loading-card">Загружаем прогнозные горизонты…</div>}><Horizons route={route} /></Suspense></div>
-        <Suspense fallback={<div className="loading-card">Загружаем сценарии…</div>}><Coefficients route={route} /></Suspense>
-        <footer className="page-footer"><span>Московский городской транспорт <b>·</b> Единый диспетчерский центр</span><span><span className="live-dot" /> Данные прогноза · модель временных рядов</span></footer>
-      </div>
+    <main className="main-content" id="overview">
+      <section className="control-strip"><div className="control-title"><b>События и приоритеты</b><span title="Показано маршрутов">{visibleEvents.length}/{routeEvents.length}</span></div><div className="map-modes"><button aria-pressed={mapMode === 'passengers'} title="Показывает каждый маршрут своим цветом" className={mapMode === 'passengers' ? 'active' : ''} onClick={() => setMapMode('passengers')}><Users size={15} />Пассажиропоток</button><button aria-pressed={mapMode === 'overload'} title="Окрашивает маршруты по уровню загрузки" className={mapMode === 'overload' ? 'active' : ''} onClick={() => setMapMode('overload')}><span className="red-ring" />Перегрузка</button><button aria-pressed={mapMode === 'deviation'} title="Показывает отклонение от исторического среднего" className={mapMode === 'deviation' ? 'active' : ''} onClick={() => setMapMode('deviation')}><Activity size={15} />Отклонение</button><button aria-pressed={mapMode === 'forecast'} title="Толщина линии отражает прогнозный пассажиропоток" className={mapMode === 'forecast' ? 'active' : ''} onClick={() => setMapMode('forecast')}><Sparkles size={15} />Прогноз</button></div><div className="route-title">Детали маршрута {selectedRoute?.id ?? '—'}</div></section>
+      {error && <div className="error-banner">Не удалось загрузить данные: {error}. Убедитесь, что сервис доступен.</div>}
+      {selectedRouteHasNoHistory && <div className="info-banner">По маршруту {route} нет исторических наблюдений.</div>}
+      <section className="ops-grid">
+        <article className="events-panel panel" id="routes"><div className="event-tabs"><button className={eventFilter === 'all' ? 'active' : ''} onClick={() => setEventFilter('all')}>Все маршруты <b>{routeEvents.length}</b></button><button className={eventFilter === 'critical' ? 'active' : ''} onClick={() => setEventFilter('critical')}>Критичные <b>{eventCounts.critical}</b></button><button className={eventFilter === 'warning' ? 'active' : ''} onClick={() => setEventFilter('warning')}>Риск <b>{eventCounts.warning}</b></button></div><label className="compact-select"><span>Сортировка:</span><select value={eventSort} onChange={(event) => setEventSort(event.target.value as typeof eventSort)}><option value="priority">По приоритету</option><option value="load">По пассажиропотоку</option><option value="route">По номеру маршрута</option></select><small>Показано {visibleEvents.length} из {routeEvents.length}</small></label><div className="ranking-list">{visibleEvents.map((item) => <button className={`event-card ${item.risk} ${route === item.id ? 'chosen' : ''}`} key={item.id} onClick={() => setRoute(route === item.id ? 'all' : item.id)}><TramFront size={18} /><span className="event-copy"><b>Маршрут {item.id}</b><strong>{item.risk === 'critical' ? 'Прогнозируется перегрузка' : item.risk === 'warning' ? 'Повышенная загрузка' : 'Штатная нагрузка'}</strong><small>{item.name}</small></span><span className="event-metric">{item.change === null ? '—' : `${item.change >= 0 ? '+' : ''}${item.change.toFixed(1)}%`}<i>{item.risk === 'critical' ? 'Критично' : item.risk === 'warning' ? 'Риск' : 'Норма'}</i></span></button>)}{visibleEvents.length === 0 && <div className="events-empty">Маршруты по заданным условиям не найдены</div>}</div><div className="events-scroll-hint">↕ Прокрутите список, чтобы увидеть все маршруты</div></article>
+        <Suspense fallback={<div className="panel map-panel loading-card" />}><OverviewMap route={route} geo={geo} mode={mapMode} metrics={mapMetrics} /></Suspense>
+        <article className="route-detail panel"><div className="detail-tabs"><button className={detailTab === 'overview' ? 'active' : ''} onClick={() => setDetailTab('overview')}>Обзор</button><button className={detailTab === 'stops' ? 'active' : ''} onClick={() => setDetailTab('stops')}>Остановки <b>{selectedStops.length}</b></button><button className={detailTab === 'segments' ? 'active' : ''} onClick={() => setDetailTab('segments')}>Участки <b>{Math.max(0, selectedStops.length - 1)}</b></button></div><div className="route-head"><div className="route-symbol"><TramFront /></div><div><h2>Маршрут {selectedRoute?.id ?? '—'}</h2><p>{selectedRoute?.name ?? 'Выберите маршрут'}</p></div><span className="critical-badge">{routeEvents.find((item) => item.id === selectedRoute?.id)?.risk === 'critical' ? 'Критично' : routeEvents.find((item) => item.id === selectedRoute?.id)?.risk === 'warning' ? 'Риск' : 'Норма'}</span></div>{detailTab === 'overview' && <><div className="detail-kpis"><div><span>Текущая загрузка</span><b>{Math.max(100, Math.round(100 + Math.abs(delta)))}%</b><small>{delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}%</small></div><div><span>Прогноз на день</span><b>{format(dayTotal)}</b><small>посадок</small></div></div><h3>Ближайшие события</h3><ul className="alerts"><li className="red">Пиковая нагрузка в {String(peak.hour).padStart(2, '0')}:00 <b>{delta >= 0 ? '+' : ''}{delta.toFixed(0)}%</b></li><li className="orange">Прогноз за месяц <b>{format(allMonthTotal)}</b></li><li className="orange">Остановок в справочнике <b>{selectedStops.length}</b></li></ul><div className="recommendation"><Sparkles size={18} /><div><b>Рекомендация системы</b><p>{delta > 10 ? 'Увеличить выпуск на маршрут в пиковый интервал.' : 'Сохранить текущий выпуск и продолжить наблюдение.'}</p></div></div><div className="detail-stats"><div><b>{dailyChart.length}</b><span>дней</span></div><div><b>{format(allMonthTotal)}</b><span>за месяц</span></div><div><b>{String(peak.hour).padStart(2, '0')}:00</b><span>час пик</span></div></div></>}{detailTab === 'stops' && <div className="detail-list"><h3>Остановки маршрута</h3>{selectedStops.slice(0, 10).map((stop, index) => <button key={`${stop}-${index}`} onClick={() => document.getElementById('stops-analytics')?.scrollIntoView({ behavior: 'smooth' })}><span>{index + 1}</span>{stop}</button>)}{selectedStops.length === 0 && <p>Для маршрута нет остановок в справочнике.</p>}</div>}{detailTab === 'segments' && <div className="detail-list segments-list"><h3>Участки маршрута</h3>{selectedStops.slice(0, 7).map((stop, index) => selectedStops[index + 1] ? <button key={`${stop}-${index}`} onClick={() => document.getElementById('stops-analytics')?.scrollIntoView({ behavior: 'smooth' })}><span>{index + 1}</span><div>{stop}<small>→ {selectedStops[index + 1]}</small></div></button> : null)}{selectedStops.length < 2 && <p>Для маршрута нет участков в справочнике.</p>}</div>}<div className="detail-actions"><button className="active" onClick={showRouteOnMap}><MapPinned size={14} />Показать на карте</button><button onClick={() => exportFile('csv')}><Download size={14} />Скачать CSV</button></div></article>
+      </section>
+      <section className="forecast-grid"><Suspense fallback={<div className="panel flow-panel loading-card" />}><FlowChart mode={mode} data={chartData} total={format(chartTotal)} caption={chartCaption} format={format} onModeChange={setMode} /></Suspense><article className="panel day-panel"><div className="panel-heading"><div><div className="panel-title">Почасовой прогноз</div><div className="panel-subtitle">{dateLabel(selectedDate, true)}</div></div><div className="date-chip">Таблица</div></div><div className="hour-table-head"><span>Время</span><span>Прогноз</span><span>Загрузка</span></div><div className="hour-list">{hourlyDayRows.filter((row) => row.hour >= 14 && row.hour <= 20).map((row) => { const pct = Math.round(row.passengers / Math.max(peak.passengers, 1) * 172); return <div className={`hour-row ${row.hour === peak.hour ? 'peak-row' : ''}`} key={row.hour}><span>{String(row.hour).padStart(2, '0')}:00</span><b>{format(row.passengers)}</b><strong className={pct > 130 ? 'hot' : ''}>{pct}%</strong></div> })}</div></article></section>
+      <section className="toolbar"><div className="toolbar-group"><span className="toolbar-caption">МЕСЯЦ</span><div className="month-switch"><button className={month === 11 ? 'selected' : ''} onClick={() => setMonth(11)}>Ноябрь</button><button className={month === 12 ? 'selected' : ''} onClick={() => setMonth(12)}>Декабрь</button></div></div><label className="select-wrap"><span className="toolbar-caption">МАРШРУТ</span><div className="select-control"><RouteIcon size={16} /><select value={route} onChange={(e) => setRoute(e.target.value === 'all' ? 'all' : Number(e.target.value))}><option value="all">Все маршруты</option>{routes.map((item) => <option key={item.id} value={item.id}>Трамвай {item.id}</option>)}</select><ChevronDown size={15} /></div></label><label className="select-wrap date-select"><span className="toolbar-caption">ДАТА</span><div className="select-control"><CalendarDays size={16} /><select value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}>{Array.from({ length: mode === 'week' && month === 12 ? 25 : new Date(2025, month, 0).getDate() }, (_, i) => { const d = `2025-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`; return <option key={d} value={d}>{dateLabel(d, true)}</option> })}</select><ChevronDown size={15} /></div></label><button className="secondary-button" onClick={() => exportFile('xlsx')}><Download size={14} />Экспорт XLSX</button></section>
+      <div className="deep-analytics"><div id="stops-analytics"><Suspense fallback={<div className="loading-card">Загружаем аналитику остановок…</div>}><StopsMap route={route} routeSummaries={routes} /></Suspense></div><div id="history"><Suspense fallback={<div className="loading-card">Загружаем прогнозные горизонты…</div>}><Horizons route={route} /></Suspense></div><div id="settings"><Suspense fallback={<div className="loading-card">Загружаем сценарии…</div>}><Coefficients route={route} /></Suspense></div></div>
+      <footer className="page-footer"><span>Московский городской транспорт · Единый диспетчерский центр</span><span><span className="live-dot" /> модель временных рядов активна</span></footer>
     </main>
   </div>
 }

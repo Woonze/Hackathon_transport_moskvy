@@ -73,10 +73,10 @@ export default function Horizons({ route }: { route: RouteId }) {
         <div className="x-chart">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chart} margin={{ top: 8, right: 8, left: -6, bottom: 0 }}>
-              <CartesianGrid stroke="#edf0f6" vertical={false} />
+              <CartesianGrid stroke="#1b2b3b" vertical={false} />
               <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#98a1b2', fontSize: 10 }} interval={0} />
               <YAxis tickLine={false} axisLine={false} tick={{ fill: '#98a1b2', fontSize: 10 }} tickFormatter={(n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}М` : n >= 1000 ? `${Math.round(n / 1000)}к` : n)} />
-              <Tooltip formatter={(v, n) => [`${fmt(Number(v))} посадок`, NAMES[n as keyof typeof NAMES] ?? n]} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
+              <Tooltip formatter={(v, n) => [`${fmt(Number(v))} посадок`, NAMES[n as keyof typeof NAMES] ?? n]} contentStyle={{ border: '1px solid #26394d', background: '#0b1722', color: '#dce6f5', borderRadius: 8, fontSize: 11 }} />
               <Legend formatter={(n) => NAMES[n as keyof typeof NAMES] ?? n} wrapperStyle={{ fontSize: 11 }} />
               {(Object.keys(NAMES) as (keyof typeof NAMES)[]).filter((k) => tab === 'year' || k !== 'scenario').map((k) => <Bar key={k} dataKey={k} stackId="s" fill={COLORS[k]} radius={[3, 3, 0, 0]} />)}
             </BarChart>

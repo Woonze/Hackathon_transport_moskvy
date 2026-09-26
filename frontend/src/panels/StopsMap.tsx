@@ -151,10 +151,10 @@ export default function StopsMap({ route: dashboardRoute, routeSummaries }: { ro
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={chart} margin={{ top: 8, right: 6, left: -18, bottom: 0 }}>
                       <defs><linearGradient id="stopGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#537dff" stopOpacity={0.25} /><stop offset="100%" stopColor="#537dff" stopOpacity={0.02} /></linearGradient></defs>
-                      <CartesianGrid stroke="#edf0f6" vertical={false} />
+                      <CartesianGrid stroke="#1b2b3b" vertical={false} />
                       <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#98a1b2', fontSize: 10 }} minTickGap={16} />
                       <YAxis tickLine={false} axisLine={false} tick={{ fill: '#98a1b2', fontSize: 10 }} />
-                      <ChartTooltip formatter={(v) => [`~${fmt(Number(v))} посадок`, 'Оценка']} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
+                      <ChartTooltip formatter={(v) => [`~${fmt(Number(v))} посадок`, 'Оценка']} contentStyle={{ border: '1px solid #26394d', background: '#0b1722', color: '#dce6f5', borderRadius: 8, fontSize: 11 }} />
                       <Area type="monotone" dataKey="passengers" stroke="#4f75f3" strokeWidth={2.4} fill="url(#stopGradient)" isAnimationActive={false} />
                     </AreaChart>
                   </ResponsiveContainer>
