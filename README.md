@@ -35,7 +35,8 @@ docker compose up --build          # http://localhost:8000  (другой пор
 1. Склонируйте репозиторий в `/opt/hackathon-transport-moskvy`.
 2. В этой папке запустите `python3 -m backend.setup_env --server`; мастер интерактивно спросит логин/пароль и создаст файл `.env` с правами `0600`.
 3. Запустите `docker compose -p moskvy-tram -f docker-compose.server.yml up -d --build`.
-4. Публичный HTTPS-вход проекта работает отдельно на `https://mos.fotur.tech:8443/tram/`; порт `8443/tcp` должен быть разрешён в firewall. TLS-сертификат выпускается через DNS-01 для `_acme-challenge.mos.fotur.tech`.
+4. Установите ежедневную проверку продления: скопируйте `deploy/systemd/moskvy-tram-cert-renew.service` и `.timer` в `/etc/systemd/system/`, затем выполните `systemctl daemon-reload && systemctl enable --now moskvy-tram-cert-renew.timer`.
+5. Публичный HTTPS-вход проекта работает отдельно на `https://mos.fotur.tech:8443/tram/`; порт `8443/tcp` должен быть разрешён в firewall. TLS-сертификат выпускается Certbot через HTTP-01 на порту 80. Продление проверяется ежедневным systemd-таймером; при фактическом продлении порт 80 временно освобождается, а Caddy на 80/443 автоматически возвращается.
 
 `AUTH_COOKIE_SECURE=true`, cookie SameSite Strict и HttpOnly. Для смены пароля остановите стек, удалите приватный `.env`, снова запустите мастер и пересоздайте контейнер приложения; старые сессии будут отвергнуты после ротации токена или истечения срока.
 
