@@ -152,7 +152,8 @@ function App() {
     }
     const controller = new AbortController()
     const monthStart = `${selectedDate.slice(0, 7)}-01`
-    const monthEnd = `${selectedDate.slice(0, 7)}-${String(new Date(Number(selectedDate.slice(0, 4)), Number(selectedDate.slice(5, 7)), 0).getDate()).padStart(2, '0')}`
+    const calendarMonthEnd = `${selectedDate.slice(0, 7)}-${String(new Date(Number(selectedDate.slice(0, 4)), Number(selectedDate.slice(5, 7)), 0).getDate()).padStart(2, '0')}`
+    const monthEnd = weekEnd > calendarMonthEnd ? weekEnd : calendarMonthEnd // «Ближайшие 7 дней» может выходить за конец месяца
     const stopId = encodeURIComponent(selectedStop.stop_id)
     const routeId = selectedStop.route
     setStopInsight(null)
@@ -298,7 +299,7 @@ function App() {
   const selectedRouteRank = selectedRoute ? routeRanking.findIndex((item) => item.id === selectedRoute.id) + 1 : 0
   const routeMonthShare = selectedRoute && networkMonthTotal > 0 ? selectedRoute.value / networkMonthTotal * 100 : 100
   const stopDayTotal = stopInsight?.hourly.reduce((sum, item) => sum + item.passengers, 0) ?? stopInsight?.boardings ?? 0
-  const stopMonthTotal = stopInsight?.daily.reduce((sum, item) => sum + item.passengers, 0) ?? 0
+  const stopMonthTotal = stopInsight?.daily.filter((item) => item.date.startsWith(selectedDate.slice(0, 7))).reduce((sum, item) => sum + item.passengers, 0) ?? 0
   const stopWeekRows = stopInsight?.daily.filter((item) => item.date >= selectedDate && item.date <= weekEnd) ?? []
   const stopWeekTotal = stopWeekRows.reduce((sum, item) => sum + item.passengers, 0)
   const stopPeak = (stopInsight?.hourly ?? []).reduce((best, item) => item.passengers > best.passengers ? item : best, { hour: 0, passengers: 0 })

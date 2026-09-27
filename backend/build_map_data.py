@@ -64,6 +64,7 @@ def _merge_ways(ways: list[dict]) -> list[list[float]]:
                 coords = list(reversed(remaining.pop(i)))[:-1] + coords
                 break
         else:
+            print(f"build_map_data: не нашёл совпадающий конец при сшивке OSM-геометрии, {len(remaining)} сегментов останется несостыкованными — проверить dataset/osm/tram_routes_extra.json")
             coords += remaining.pop(0)
     return coords
 
