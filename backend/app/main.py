@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 
@@ -11,7 +12,8 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .errors import install_error_handlers
-from .routers import data, ingest, live, scenarios, stops
+from .routers import auth, data, dispatch, ingest, live, scenarios, stops
+from .services.database import Database
 from .store import DataStore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -21,11 +23,24 @@ log = logging.getLogger("tram")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     started = time.perf_counter()
-    app.state.store = DataStore()
+    app.state.database = None
+    if config.DATABASE_URL:
+        database = Database(config.DATABASE_URL)
+        database.open()
+        database.ensure_user(config.AUTH_USERNAME, config.AUTH_PASSWORD_HASH or "")
+        app.state.database = database
+        log.info("PostgreSQL подключён")
+    else:
+        log.warning("DATABASE_URL не задан: запускается локальный режим без PostgreSQL и авторизации")
+    app.state.store = DataStore(database=app.state.database)
     log.info("Данные загружены за %.2f с", time.perf_counter() - started)
     if not config.INGEST_API_KEY:
         log.warning("INGEST_API_KEY не задан: приём данных открыт без ключа (допустимо только для разработки)")
-    yield
+    try:
+        yield
+    finally:
+        if app.state.database:
+            app.state.database.close()
 
 
 def create_app() -> FastAPI:
@@ -33,6 +48,7 @@ def create_app() -> FastAPI:
         title="Прогноз пассажиропотока трамваев Москвы",
         version=config.API_VERSION,
         description="Прогноз посадок по маршруту, дате и часу, история, агрегации и выгрузка.",
+        root_path=os.getenv("APP_ROOT_PATH", ""),
         default_response_class=ORJSONResponse,
         lifespan=lifespan,
     )
@@ -66,9 +82,13 @@ def create_app() -> FastAPI:
     def sync_store(request: Request) -> None:
         request.app.state.store.refresh()  # подхватываем данные, принятые другим воркером
 
-    for router in (data.router, scenarios.router, ingest.router, stops.router, live.router):
-        app.include_router(router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(sync_store)])
-        app.include_router(router, prefix="/api", include_in_schema=False, dependencies=[Depends(sync_store)])  # алиасы
+    for prefix in ("/api/v1", "/api"):
+        app.include_router(auth.router, prefix=prefix, tags=["auth"])
+
+    for router in (data.router, scenarios.router, ingest.router, stops.router, live.router, dispatch.router):
+        dependencies = [Depends(sync_store), Depends(auth.require_session)]
+        app.include_router(router, prefix="/api/v1", tags=["v1"], dependencies=dependencies)
+        app.include_router(router, prefix="/api", include_in_schema=False, dependencies=dependencies)  # алиасы
 
     if config.FRONTEND_DIST.exists():
         app.mount("/", StaticFiles(directory=config.FRONTEND_DIST, html=True), name="frontend")

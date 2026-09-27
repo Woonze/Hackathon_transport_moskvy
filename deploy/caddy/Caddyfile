@@ -1,0 +1,10 @@
+{
+	admin off
+	auto_https off
+}
+
+mos.fotur.tech:8443 {
+	tls /etc/letsencrypt/live/mos.fotur.tech/fullchain.pem /etc/letsencrypt/live/mos.fotur.tech/privkey.pem
+	encode zstd gzip
+	reverse_proxy tram:8000
+}

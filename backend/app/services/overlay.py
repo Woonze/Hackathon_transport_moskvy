@@ -17,7 +17,8 @@ from .. import config
 from ..errors import ApiError
 
 log = logging.getLogger("tram")
-COLUMNS = ["batch_id", "route", "date", "hour", "boardings"]
+LEGACY_COLUMNS = ["batch_id", "route", "date", "hour", "boardings"]
+COLUMNS = [*LEGACY_COLUMNS, "complete"]
 
 
 def stamp() -> tuple[int, int] | None:
@@ -30,7 +31,7 @@ def stamp() -> tuple[int, int] | None:
 
 
 def empty() -> pd.DataFrame:
-    return pd.DataFrame(columns=COLUMNS).astype({"route": "int64", "date": "datetime64[ns]", "hour": "int64", "boardings": "int64"})
+    return pd.DataFrame(columns=COLUMNS).astype({"route": "int64", "date": "datetime64[ns]", "hour": "int64", "boardings": "int64", "complete": "bool"})
 
 
 def read() -> pd.DataFrame:
@@ -38,7 +39,9 @@ def read() -> pd.DataFrame:
     if stamp() is None or config.OVERLAY.stat().st_size == 0:
         return empty()
     df = pd.read_csv(config.OVERLAY, sep=";", dtype=str, on_bad_lines="skip")
-    if list(df.columns) != COLUMNS:
+    if list(df.columns) == LEGACY_COLUMNS:
+        df["complete"] = "False"
+    elif list(df.columns) != COLUMNS:
         log.error("Файл принятых данных %s: неожиданные столбцы %s, файл проигнорирован", config.OVERLAY, list(df.columns))
         return empty()
     for col in ("route", "hour", "boardings"):
@@ -48,7 +51,9 @@ def read() -> pd.DataFrame:
     good = good[good["hour"].between(0, 23) & (good["boardings"] >= 0)]
     if len(good) != len(df):
         log.warning("Файл принятых данных: пропущено повреждённых строк: %d из %d", len(df) - len(good), len(df))
-    return good.astype({"route": "int64", "hour": "int64", "boardings": "int64"}).reset_index(drop=True)
+    good = good.copy()
+    good["complete"] = good["complete"].str.lower().isin(("true", "1"))
+    return good.astype({"route": "int64", "hour": "int64", "boardings": "int64", "complete": "bool"}).reset_index(drop=True)
 
 
 def _has_valid_header() -> bool:
@@ -56,7 +61,7 @@ def _has_valid_header() -> bool:
     if stamp() is None or config.OVERLAY.stat().st_size == 0:
         return False
     try:
-        return list(pd.read_csv(config.OVERLAY, sep=";", dtype=str, nrows=0).columns) == COLUMNS
+        return list(pd.read_csv(config.OVERLAY, sep=";", dtype=str, nrows=0).columns) in (COLUMNS, LEGACY_COLUMNS)
     except (OSError, UnicodeError, pd.errors.EmptyDataError, pd.errors.ParserError):
         return False
 
@@ -110,13 +115,13 @@ def _locked():
                 fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-def append(batch_id: str, agg: pd.DataFrame) -> bool:
+def append(batch_id: str, agg: pd.DataFrame, complete: bool = False) -> bool:
     """Дописывает пакет; False, если пакет с таким batch_id уже принят (идемпотентность)."""
     with _locked():
         valid_file = _has_valid_header()
         if valid_file:
             saved = read()
-            previous = saved.loc[saved["batch_id"] == batch_id, ["route", "date", "hour", "boardings"]]
+            previous = saved.loc[saved["batch_id"] == batch_id, ["route", "date", "hour", "boardings", "complete"]]
             if len(previous):
                 columns = ["route", "date", "hour", "boardings"]
                 def canonical(frame: pd.DataFrame) -> list[tuple[int, str, int, int]]:
@@ -125,9 +130,16 @@ def append(batch_id: str, agg: pd.DataFrame) -> bool:
                         for route, day, hour, count in frame[columns].itertuples(index=False, name=None)
                     )
 
-                if canonical(previous) == canonical(agg[columns]):
+                if canonical(previous) == canonical(agg[columns]) and previous["complete"].eq(complete).all():
                     return False
                 raise ApiError(409, "Идентификатор пакета уже использован для других данных", "batch_id_conflict")
+            if list(pd.read_csv(config.OVERLAY, sep=";", dtype=str, nrows=0).columns) == LEGACY_COLUMNS:
+                temporary = config.OVERLAY.with_name(f"{config.OVERLAY.name}.{os.getpid()}.tmp")
+                try:
+                    saved.to_csv(temporary, sep=";", index=False, columns=COLUMNS, date_format="%Y-%m-%d")
+                    os.replace(temporary, config.OVERLAY)
+                finally:
+                    temporary.unlink(missing_ok=True)
         else:
             if config.OVERLAY.exists():
                 log.warning("Файл принятых данных %s пуст или имеет неверный заголовок; создаём заново", config.OVERLAY)
@@ -137,6 +149,6 @@ def append(batch_id: str, agg: pd.DataFrame) -> bool:
                 fh.seek(-1, 2)
                 if fh.read(1) != b"\n":
                     fh.write(b"\n")
-        out = agg.assign(batch_id=batch_id)[COLUMNS]
+        out = agg.assign(batch_id=batch_id, complete=complete)[COLUMNS]
         out.to_csv(config.OVERLAY, sep=";", index=False, mode="a", header=False, date_format="%Y-%m-%d")
         return True

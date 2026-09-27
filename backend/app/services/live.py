@@ -21,6 +21,7 @@ def snapshot(store: DataStore) -> dict:
         "ingested_boardings": store.ingested_boardings,
         "updated_at": store.updated_at.isoformat(timespec="seconds"),
         "worker_pid": os.getpid(),
+        "ml_model": store.ml_status,
     }
 
 

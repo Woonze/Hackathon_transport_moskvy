@@ -17,7 +17,6 @@ export default function Coefficients({ route }: { route: RouteId }) {
   const [month, setMonth] = useState(12)
   const [factors, setFactors] = useState<Factors>({ weather: 1, event: 1, season: 1 })
   const [ruleOn, setRuleOn] = useState(false)
-  const [calendar, setCalendar] = useState(false)
   const [regimeOn, setRegimeOn] = useState(false)
   const [weatherOn, setWeatherOn] = useState(false)
   const [regime, setRegime] = useState<Regime | null>(null)
@@ -46,11 +45,11 @@ export default function Coefficients({ route }: { route: RouteId }) {
   }, [month, days])
   const body = useDebounced(useMemo(() => {
     const ym = `2025-${pad(month)}`
-    const b: Record<string, unknown> = { start: `${ym}-01`, end: `${ym}-${pad(days)}`, granularity: 'day', factors, rules: [], calendar, regime: regimeOn, weather_auto: weatherOn }
+    const b: Record<string, unknown> = { start: `${ym}-01`, end: `${ym}-${pad(days)}`, granularity: 'day', factors, rules: [], regime: regimeOn, weather_auto: weatherOn }
     if (route !== 'all') b.route = route
     if (ruleOn) b.rules = [{ start: `${ym}-${pad(Math.min(rule.from, days))}`, end: `${ym}-${pad(Math.min(rule.to, days))}`, factor: rule.factor, hour_from: rule.hourFrom, hour_to: rule.hourTo, label: 'из интерфейса' }]
     return JSON.stringify(b)
-  }, [month, days, factors, ruleOn, rule, route, calendar, regimeOn, weatherOn]), 300)
+  }, [month, days, factors, ruleOn, rule, route, regimeOn, weatherOn]), 300)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -72,7 +71,7 @@ export default function Coefficients({ route }: { route: RouteId }) {
   }, [result])
 
   const s = result?.summary
-  const changed = factors.weather !== 1 || factors.event !== 1 || factors.season !== 1 || ruleOn || calendar || regimeOn || weatherOn
+  const changed = factors.weather !== 1 || factors.event !== 1 || factors.season !== 1 || ruleOn || regimeOn || weatherOn
   const slider = (k: keyof Factors) => (
     <label className="x-field" key={k}>{TITLES[k]}: <b>×{factors[k].toFixed(2)}</b>
       <input type="range" min={0.5} max={1.5} step={0.05} value={factors[k]} onChange={(e) => setFactors({ ...factors, [k]: Number(e.target.value) })} />
@@ -88,7 +87,7 @@ export default function Coefficients({ route }: { route: RouteId }) {
         </div>
         <div className="x-controls">
           {(Object.keys(TITLES) as (keyof Factors)[]).map(slider)}
-          <button className="secondary-button" onClick={() => { setFactors({ weather: 1, event: 1, season: 1 }); setRuleOn(false); setCalendar(false); setRegimeOn(false); setWeatherOn(false) }} disabled={!changed}>Сбросить</button>
+          <button className="secondary-button" onClick={() => { setFactors({ weather: 1, event: 1, season: 1 }); setRuleOn(false); setRegimeOn(false); setWeatherOn(false) }} disabled={!changed}>Сбросить</button>
         </div>
         {presets && (
           <div className="x-chips">
@@ -104,9 +103,8 @@ export default function Coefficients({ route }: { route: RouteId }) {
         )}
         {presets && presets.calendar.days.length > 0 && (
           <div className="x-controls">
-            <label className="x-check"><input type="checkbox" checked={calendar} onChange={(e) => setCalendar(e.target.checked)} /> Учесть производственный календарь РФ</label>
             <span className="panel-subtitle" style={{ margin: 0, paddingBottom: 6 }}>
-              Праздничные будни: {presets.calendar.days.map((d) => `${Number(d.slice(8))}.${d.slice(5, 7)}`).join(', ')} — модель считает их обычными днями недели. Измеренный эффект: {((presets.calendar.holiday_factor - 1) * 100).toFixed(1)}%
+              Производственный календарь РФ уже учитывается ML-моделью. Праздничные будни: {presets.calendar.days.map((d) => `${Number(d.slice(8))}.${d.slice(5, 7)}`).join(', ')}. Измеренный эффект в истории: {((presets.calendar.holiday_factor - 1) * 100).toFixed(1)}%
               {presets.calendar.holiday_effect_ci95 ? ` (95% ДИ ${(presets.calendar.holiday_effect_ci95[0] * 100).toFixed(1)}…${(presets.calendar.holiday_effect_ci95[1] * 100).toFixed(1)}%)` : ''}
             </span>
           </div>

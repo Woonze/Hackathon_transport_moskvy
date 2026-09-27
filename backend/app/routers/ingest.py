@@ -32,4 +32,4 @@ router = APIRouter()
     dependencies=[Depends(require_key)],
 )
 def ingest_validations(body: IngestRequest, request: Request):
-    return ORJSONResponse(ingest.process(body.records, body.batch_id, request.app.state.store))
+    return ORJSONResponse(ingest.process(body.records, body.batch_id, request.app.state.store, complete=body.complete))

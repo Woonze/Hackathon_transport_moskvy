@@ -1,0 +1,72 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Create the private .env first}
+      POSTGRES_USER: ${POSTGRES_USER:?Create the private .env first}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Create the private .env first}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      database:
+        aliases: [tram-database]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  tram:
+    build:
+      context: .
+      args:
+        VITE_BASE: /
+        VITE_API_URL: ""
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@tram-database:5432/${POSTGRES_DB}
+      AUTH_USERNAME: ${AUTH_USERNAME:?Create the private .env first}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:?Create the private .env first}
+      AUTH_COOKIE_SECURE: "true"
+      AUTH_COOKIE_PATH: /
+      INGEST_FILE: /data/ingested.csv
+      CORS_ORIGINS: https://mos.fotur.tech:8443
+    volumes:
+      - ingest_data:/data
+    networks:
+      database: {}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    cpus: 2.0
+    mem_limit: 2g
+
+  ingress:
+    image: caddy:2-alpine
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    networks: [database, ingress_edge]
+    depends_on:
+      tram:
+        condition: service_healthy
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 256m
+volumes:
+  postgres_data:
+  ingest_data:
+
+networks:
+  database:
+    internal: true
+  ingress_edge: {}

@@ -1,0 +1,46 @@
+name: Deploy to server
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: moskvy-tram-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy main to server
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Deploy over restricted SSH
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          test -n "$DEPLOY_SSH_KEY"
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          key_file=$(mktemp)
+          trap 'rm -f "$key_file"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$key_file"
+          chmod 600 "$key_file"
+          ssh -i "$key_file" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST"

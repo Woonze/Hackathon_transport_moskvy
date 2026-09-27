@@ -1,0 +1,6 @@
+[Unit]
+Description=Renew mos.fotur.tech Let's Encrypt certificate
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/hackathon-transport-moskvy/deploy/renew-certificate.sh

@@ -24,6 +24,7 @@ def health(request: Request):
     store = request.app.state.store
     return {
         "status": "ok",
+        "database": "postgresql" if request.app.state.database else "local-file",
         "version": config.API_VERSION,
         "worker_pid": os.getpid(),  # какой воркер ответил: нужно для диагностики нескольких воркеров
         "forecast_rows": store.forecast_rows,
@@ -31,6 +32,7 @@ def health(request: Request):
         "ingest_protected": bool(config.INGEST_API_KEY),
         "data_updated_at": store.updated_at.isoformat(timespec="seconds"),
         "ingested_boardings": store.ingested_boardings,
+        "ml_model": store.ml_status,
         "history_period": [config.HISTORY_START.isoformat(), store.history_end.isoformat()],
         "forecast_period": [config.FORECAST_START.isoformat(), config.FORECAST_END.isoformat()],
     }

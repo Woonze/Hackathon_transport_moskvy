@@ -31,7 +31,6 @@
 .x-live-dot{width:9px;height:9px;border-radius:50%;background:currentColor;flex:none}
 .x-live-online .x-live-dot{animation:x-pulse 1.6s ease-in-out infinite}
 @keyframes x-pulse{0%,100%{opacity:1}50%{opacity:.25}}
-
 /* Dark operations-console skin shared by every analytical module. */
 .x-section{margin-bottom:8px;color:#dce6f5}.x-panel{background:#0a151f!important;border-color:#1c2c3d!important;padding:13px 14px!important}.x-controls{gap:12px}.x-field{color:#77899e}.x-field b,.x-stop-title{color:#dce6f5}.x-field select,.x-field input[type=date],.x-field input[type=number]{border-color:#26394d;background:#0d1b28;color:#c0cedd}.x-field input[type=range]{accent-color:#318cf0}.x-kpis div{background:#0e1c29;border:1px solid #192c3e}.x-kpis b{color:#dce6f5}.x-kpis span,.x-chips{color:#7c8da1}.x-kpis .up{color:#20c889}.x-kpis .down{color:#f15b69}.x-chip{border-color:#26394d;background:#0d1b28;color:#9aabbd}.x-chip:hover{border-color:#318cf0;color:#72b5fb}.x-note{background:#102744;color:#9ec8ed;border:1px solid #1b416b}.x-note a{color:#69b4ff}.x-error{background:#3a1820;color:#ff8190}.x-chart{height:250px}.x-map{border:1px solid #1d3145}.x-gradient{background:linear-gradient(90deg,#20c889,#f1ca49,#f05b69)}.x-check{color:#a0b0c0}.x-empty{color:#73859a}.x-live{background:#123428;color:#62deb2}.x-live-offline,.x-live-connecting{background:#3a2a17;color:#f5ad57}
 
@@ -55,3 +54,14 @@
 .hz-scenario{background:repeating-linear-gradient(135deg,#f0a339 0 3px,#f0a33933 3px 6px);border:1px solid #f0a339}
 .hz-kpis b{color:#fff}
 .hz-tip strong{color:#fff}
+
+.x-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.x-badge-red{background:#fde8ec;color:#a23b2a}.x-badge-blue{background:#e6edff;color:#2f5bd8}.x-badge-grey{background:#eef0f5;color:#566175}
+.x-scroll{overflow:auto;max-height:300px}
+.x-table{width:100%;border-collapse:collapse;font-size:12px}
+.x-table th{position:sticky;top:0;background:#f7f9fd;text-align:left;padding:6px 8px;color:#566175;font-weight:600}
+.x-table td{padding:5px 8px;border-top:1px solid #edf0f6;color:#29354a}
+.x-swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:2px}
+
+/* Keep tables introduced on main readable inside the dark console. */
+.x-table th{background:#0e1d2b;color:#8fa0b4}.x-table td{border-color:#1b2b3b;color:#dce6f5}.x-badge-red{background:#45202a;color:#ff8792}.x-badge-blue{background:#15314b;color:#76baff}.x-badge-grey{background:#1a2734;color:#a8b6c6}

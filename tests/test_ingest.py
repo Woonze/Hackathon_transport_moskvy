@@ -96,6 +96,21 @@ def test_new_month_extends_history_and_export(client):
     assert "2025-11-03" in client.get("/api/v1/export?kind=history&granularity=day&route=7&start=2025-11-03&end=2025-11-03").text
 
 
+def test_partial_day_waits_for_completion_before_ml_training(client):
+    initial = client.get("/api/v1/health").json()["ml_model"]
+    assert post(client, [rec("2025-11-05 08:15:00")]).json()["accepted"] == 1
+    pending = client.get("/api/v1/health").json()["ml_model"]
+    assert pending["updates"] == initial["updates"]
+    assert pending["training_rows"] == initial["training_rows"]
+    assert pending["pending_boardings"] == 1
+
+    assert post(client, [rec("2025-11-05 09:15:00")], complete=True).json()["accepted"] == 1
+    completed = client.get("/api/v1/health").json()["ml_model"]
+    assert completed["updates"] == initial["updates"] + 1
+    assert completed["training_rows"] == initial["training_rows"] + 10 * 24
+    assert completed["pending_boardings"] == 0
+
+
 def test_second_worker_sees_ingested_data(client):
     """Другой процесс дописал файл — этот воркер подхватывает его по mtime и сбрасывает свой кэш."""
     before = hour_total(client, 1, "2025-10-23", 12)  # заодно прогревает кэш этого воркера
@@ -215,7 +230,7 @@ def test_ingest_recovers_empty_or_foreign_overlay_file(client, contents):
 
     assert result["status"] == "accepted" and result["accepted"] == 1
     saved = pd.read_csv(config.OVERLAY, sep=";")
-    assert list(saved.columns) == ["batch_id", "route", "date", "hour", "boardings"]
+    assert list(saved.columns) == ["batch_id", "route", "date", "hour", "boardings", "complete"]
     assert saved.iloc[0]["batch_id"] == "recovered-file"
     assert _day(client, 7, "2025-10-27") == before + 1
 

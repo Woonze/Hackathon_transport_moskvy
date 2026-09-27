@@ -46,7 +46,7 @@ function minDate(left: string, right: string) {
   return left < right ? left : right
 }
 
-function App() {
+function App({ username, onLogout }: { username: string; onLogout: () => void }) {
   const [forecast, setForecast] = useState<Flow[]>([])
   const [dateForecast, setDateForecast] = useState<Flow[]>([])
   const [yearForecast, setYearForecast] = useState<YearRow[]>([])
@@ -339,7 +339,7 @@ function App() {
     <header className="topbar">
       <div className="brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}mostransport-logo.png`} alt="Московский транспорт" /><div><strong>МосТрам</strong><span>Прогноз пассажиропотока</span></div></div>
       <label className="global-search"><Search size={16} /><input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') selectSearchResult() }} aria-label="Поиск" placeholder="Поиск маршрута или остановки..." /><kbd>/</kbd><span>{search ? `${visibleEvents.length} найдено · Enter` : 'для быстрого поиска'}</span></label>
-      <div className="top-actions"><div className="data-state"><span className={`live-dot ${error ? 'offline' : ''}`} /><div>Данные обновлены<b>{loading ? 'загружаем…' : 'только что'}</b></div></div></div>
+      <div className="top-actions"><div className="data-state"><span className={`live-dot ${error ? 'offline' : ''}`} /><div>Данные обновлены<b>{loading ? 'загружаем…' : 'только что'}</b></div></div><button className="logout-button" onClick={onLogout}>Выйти</button><div className="top-avatar" title={username}>{username.slice(0, 2).toUpperCase()}</div></div>
     </header>
     <aside className="sidebar">
       <nav>
