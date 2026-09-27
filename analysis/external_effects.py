@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 
 from backend.app.console import configure_console
+from model.forecast import CALIBRATION
 
 ROOT = Path(__file__).resolve().parents[1]
 EXT = ROOT / "artifacts" / "external"
@@ -30,7 +31,6 @@ WEATHER_URL = (
     "https://archive-api.open-meteo.com/v1/archive?latitude=55.75&longitude=37.62&start_date=2025-01-01&end_date=2025-12-31"
     "&daily=temperature_2m_mean,precipitation_sum,snowfall_sum&timezone=Europe%2FMoscow"
 )
-CALIBRATION = 1.086  # константа модели команды
 
 
 def fetch(url: str) -> str:

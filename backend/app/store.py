@@ -88,8 +88,7 @@ class DataStore:
         return True
 
     def _apply(self, extra: pd.DataFrame) -> None:
-        self.ingested_boardings = int(extra["boardings"].sum()) if len(extra) else 0
-        self.updated_at = datetime.now(timezone.utc)
+        extra = extra[extra["route"].isin(self.routes)]  # чужой/неизвестный маршрут не должен портить кубы истории
         frame = pd.concat([self._labels, extra.drop(columns=["batch_id", "complete"])], ignore_index=True)
         last = max(config.HISTORY_END, extra["date"].max().date()) if len(extra) else config.HISTORY_END
         history = Series.from_frame(frame, "boardings", self.routes, config.HISTORY_START, last)
@@ -100,6 +99,9 @@ class DataStore:
         training_dates = pd.date_range(config.HISTORY_START, config.HISTORY_END, freq="D").union(completed)
         last_complete = max(config.HISTORY_END, completed.max().date()) if len(completed) else config.HISTORY_END
         self._rebuild(history, last, training_frame, training_dates, last_complete)
+        # Обновляем публичное состояние только после успешной пересборки, чтобы ошибка не оставляла частично применённый пакет.
+        self.ingested_boardings = int(extra["boardings"].sum()) if len(extra) else 0
+        self.updated_at = datetime.now(timezone.utc)
         self.ml_status["pending_boardings"] = int(extra.loc[~usable, "boardings"].sum())
 
     def _rebuild(self, history: Series, last, training_frame: pd.DataFrame, training_dates: pd.DatetimeIndex, last_complete) -> None:
