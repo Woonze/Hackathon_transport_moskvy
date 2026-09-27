@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Bell, Download, FlaskConical, CalendarDays, ChevronDown, Gauge, MapPinned, Route as RouteIcon, Search, Settings, Sparkles, TramFront, Users } from 'lucide-react'
+import { Activity, Download, FlaskConical, CalendarDays, ChevronDown, Gauge, MapPinned, Route as RouteIcon, Search, Sparkles, TramFront, Users } from 'lucide-react'
 import type { FeatureCollection, LineString, MultiLineString } from 'geojson'
 import './styles.css'
 import type { ForecastPeriod } from './panels/FlowChart'
@@ -9,11 +9,12 @@ const Horizons = lazy(() => import('./panels/Horizons'))
 const Coefficients = lazy(() => import('./panels/Coefficients'))
 const OverviewMap = lazy(() => import('./panels/OverviewMap'))
 const FlowChart = lazy(() => import('./panels/FlowChart'))
+const StopHourly = lazy(() => import('./panels/StopHourly'))
 
 type Flow = { route: number; date: string; hour: number; passengers: number }
 type TramRoute = { id: number; name: string; historical_total: number; forecast_total: number }
 type WeekdayAverage = { route: number; weekday: number; passengers: number }
-type Health = { status: 'ok' | 'error'; version: string }
+type Health = { status: 'ok' | 'error'; version: string; history_period?: [string, string] }
 type RouteGeo = FeatureCollection<LineString | MultiLineString, { route: number; stop_count: number; stops: string[] }>
 type EventRisk = 'critical' | 'warning' | 'info'
 type MapMode = 'passengers' | 'overload' | 'deviation' | 'forecast'
@@ -66,7 +67,6 @@ function App() {
   const [eventSort, setEventSort] = useState<'priority' | 'load' | 'route'>('priority')
   const [detailTab, setDetailTab] = useState<'overview' | 'load' | 'forecast' | 'stop'>('forecast')
   const [search, setSearch] = useState('')
-  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const [dailyLoading, setDailyLoading] = useState(true)
   const [hourlyLoading, setHourlyLoading] = useState(true)
@@ -192,12 +192,18 @@ function App() {
       ? `посадок · ${dateLabel(selectedDate)} — ${dateLabel(weekEnd)}`
       : `посадок за ${monthNames[month - 1].toLowerCase()}`
   const routeRanking = useMemo(() => routes.map((item) => ({ ...item, value: monthForecast.filter((row) => row.route === item.id).reduce((sum, row) => sum + row.passengers, 0) })).sort((a, b) => b.value - a.value), [routes, monthForecast])
+  const historyMonths = useMemo(() => {
+    if (!health?.history_period) return 10
+    const [sy, sm] = health.history_period[0].slice(0, 7).split('-').map(Number)
+    const [ey, em] = health.history_period[1].slice(0, 7).split('-').map(Number)
+    return (ey - sy) * 12 + (em - sm) + 1
+  }, [health])
   const routeEvents = useMemo(() => routeRanking.map((item) => {
-    const historicalMonthAverage = item.historical_total / 10
+    const historicalMonthAverage = item.historical_total / historyMonths
     const change = historicalMonthAverage > 0 ? (item.value / historicalMonthAverage - 1) * 100 : null
     const risk: EventRisk = change !== null && change >= 8 ? 'critical' : change !== null && change >= 2 ? 'warning' : 'info'
     return { ...item, change, risk }
-  }), [routeRanking])
+  }), [routeRanking, historyMonths])
   const eventCounts = useMemo(() => ({
     critical: routeEvents.filter((item) => item.risk === 'critical').length,
     warning: routeEvents.filter((item) => item.risk === 'warning').length,
@@ -254,7 +260,6 @@ function App() {
         searchRef.current?.focus()
       }
       if (event.key === 'Escape') {
-        setNotificationsOpen(false)
         searchRef.current?.blur()
         setRoute('all')
         setSelectedStop(null)
@@ -297,7 +302,6 @@ function App() {
     }
   }
   const showRouteOnMap = () => {
-    if (route === 'all' && selectedRoute) setRoute(selectedRoute.id)
     document.querySelector('.ops-grid .map-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
   const selectStopOnMap = (stop: MapStop) => {
@@ -313,21 +317,19 @@ function App() {
   }
   return <div className="app-shell">
     <header className="topbar">
-      <div className="brand"><div className="brand-mark"><TramFront size={22} /></div><div><strong>МосТрам</strong><span>Прогноз пассажиропотока</span></div></div>
+      <div className="brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}mostransport-logo.png`} alt="Московский транспорт" /><div><strong>МосТрам</strong><span>Прогноз пассажиропотока</span></div></div>
       <label className="global-search"><Search size={16} /><input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') selectSearchResult() }} aria-label="Поиск" placeholder="Поиск маршрута или остановки..." /><kbd>/</kbd><span>{search ? `${visibleEvents.length} найдено · Enter` : 'для быстрого поиска'}</span></label>
       <div className="period-tabs"><button className={mode === 'day' ? 'active' : ''} onClick={() => setMode('day')}>24 часа</button><button className={mode === 'week' ? 'active' : ''} onClick={() => setMode('week')}>Неделя</button><button className={mode === 'month' ? 'active' : ''} onClick={() => setMode('month')}>Месяц</button></div>
-      <div className="top-actions"><div className="data-state"><span className={`live-dot ${error ? 'offline' : ''}`} /><div>Данные обновлены<b>{loading ? 'загружаем…' : 'только что'}</b></div></div><div className="clock">14:28<span>{dateLabel(selectedDate)}</span></div><div className="notification-wrap"><button className={`bell ${notificationsOpen ? 'active' : ''}`} aria-label="Уведомления" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}><Bell size={17} /><i>{eventCounts.critical}</i></button>{notificationsOpen && <div className="notification-popover"><div className="notification-title">Критические события <button onClick={() => setNotificationsOpen(false)}>×</button></div>{routeEvents.filter((item) => item.risk === 'critical').slice(0, 3).map((item) => <button key={item.id} onClick={() => { setRoute(item.id); setNotificationsOpen(false) }}><span className="status-light offline" /><div><b>Маршрут {item.id}</b><small>Прогнозное изменение {item.change === null ? '—' : `${item.change > 0 ? '+' : ''}${item.change.toFixed(1)}%`}</small></div></button>)}{eventCounts.critical === 0 && <p>Критических событий нет</p>}</div>}</div><div className="top-avatar">ДС</div><div className="dispatcher"><b>Диспетчер</b><span>Смена №2</span></div></div>
+      <div className="top-actions"><div className="data-state"><span className={`live-dot ${error ? 'offline' : ''}`} /><div>Данные обновлены<b>{loading ? 'загружаем…' : 'только что'}</b></div></div></div>
     </header>
     <aside className="sidebar">
       <nav>
         <button className={`nav-item ${navSection === 'overview' ? 'active' : ''}`} onClick={() => navigateTo('overview', 'overview')}><Gauge size={18} /><span>Оперативный центр</span></button>
-        <button className={`nav-item ${navSection === 'routes' ? 'active' : ''}`} onClick={() => navigateTo('routes', 'routes')}><RouteIcon size={18} /><span>Маршруты</span></button>
         <button className={`nav-item ${navSection === 'history' ? 'active' : ''}`} onClick={() => navigateTo('history', 'history')}><Activity size={18} /><span>Прогнозы</span></button>
         <button className="nav-item" onClick={() => exportFile('xlsx')}><Download size={18} /><span>Экспорт и отчёты</span></button>
         <a className="nav-item" href="#/tester"><FlaskConical size={18} /><span>Проверка API</span></a>
-        <button className="nav-item" onClick={() => document.getElementById('settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><Settings size={18} /><span>Настройки сценария</span></button>
       </nav>
-      <div className="side-bottom"><div className="system-card"><small>Статус системы</small><div className="system-row"><span className={`status-light ${health?.status === 'ok' ? '' : 'offline'}`} /> {health?.status === 'ok' ? 'В норме' : 'Проверка'}</div><dl><div><dt>API</dt><dd>{health?.version ?? '—'}</dd></div><div><dt>Маршрутов</dt><dd>{routes.length}</dd></div><div><dt>ML</dt><dd>активна</dd></div></dl></div><div className="city-sign"><div className="brand-mark"><MapPinned size={17} /></div><span>Московский<br />метрополитен</span></div></div>
+      <div className="side-bottom"><div className="system-card"><small>Статус системы</small><div className="system-row"><span className={`status-light ${health?.status === 'ok' ? '' : 'offline'}`} /> {health?.status === 'ok' ? 'В норме' : 'Проверка'}</div><dl><div><dt>API</dt><dd>{health?.version ?? '—'}</dd></div><div><dt>Маршрутов</dt><dd>{routes.length}</dd></div><div><dt>ML</dt><dd>активна</dd></div></dl></div><div className="city-sign"><img className="city-logo" src={`${import.meta.env.BASE_URL}mostransport-logo.png`} alt="Московский транспорт" /><span>Московский<br />метрополитен</span></div></div>
     </aside>
     <main className="main-content" id="overview">
       <section className="toolbar"><div className="toolbar-group"><span className="toolbar-caption">МЕСЯЦ</span><div className="month-switch"><button className={month === 11 ? 'selected' : ''} onClick={() => setMonth(11)}>Ноябрь</button><button className={month === 12 ? 'selected' : ''} onClick={() => setMonth(12)}>Декабрь</button></div></div><label className="select-wrap"><span className="toolbar-caption">МАРШРУТ</span><div className="select-control"><RouteIcon size={16} /><select value={route} onChange={(e) => setRoute(e.target.value === 'all' ? 'all' : Number(e.target.value))}><option value="all">Все маршруты</option>{routes.map((item) => <option key={item.id} value={item.id}>Трамвай {item.id}</option>)}</select><ChevronDown size={15} /></div></label><label className="select-wrap date-select"><span className="toolbar-caption">ДАТА</span><div className="select-control"><CalendarDays size={16} /><select value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}>{Array.from({ length: mode === 'week' && month === 12 ? 25 : new Date(2025, month, 0).getDate() }, (_, i) => { const d = `2025-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`; return <option key={d} value={d}>{dateLabel(d, true)}</option> })}</select><ChevronDown size={15} /></div></label><button className="secondary-button" onClick={() => exportFile('xlsx')}><Download size={14} />Экспорт XLSX</button></section>
