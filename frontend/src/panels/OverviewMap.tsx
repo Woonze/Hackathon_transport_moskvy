@@ -1,6 +1,6 @@
 import { Fragment, useEffect } from 'react'
 import { MapPin } from 'lucide-react'
-import { CircleMarker, GeoJSON, MapContainer, TileLayer, Tooltip as MapTooltip, useMap, useMapEvents } from 'react-leaflet'
+import { CircleMarker, GeoJSON, MapContainer, Pane, TileLayer, Tooltip as MapTooltip, useMap, useMapEvents } from 'react-leaflet'
 import type { Feature, FeatureCollection, LineString, MultiLineString } from 'geojson'
 import 'leaflet/dist/leaflet.css'
 
@@ -18,12 +18,7 @@ const modeTitles: Record<MapMode, string> = {
   deviation: 'Отклонение прогноза',
   forecast: 'Прогнозный слой',
 }
-const modeDescriptions: Record<MapMode, string> = {
-  passengers: 'Каждый маршрут выделен собственным цветом',
-  overload: 'Зелёный — низкая, оранжевый — средняя, красный — высокая загрузка',
-  deviation: 'Синий — снижение, зелёный — норма, оранжевый и красный — рост к среднему',
-  forecast: 'Чем толще линия, тем выше прогнозный пассажиропоток',
-}
+const stopGroupKey = (stop: MapStop) => `${stop.route}|${stop.name.trim().toLocaleLowerCase('ru-RU')}`
 
 function StopPicker({ stops, onSelect }: { stops: MapStop[]; onSelect?: (stop: MapStop) => void }) {
   const map = useMapEvents({
@@ -50,26 +45,22 @@ function MapViewport({ route, points }: { route: number | 'all'; points: [number
   return null
 }
 
-export default function OverviewMap({ route, geo, mode = 'passengers', metrics = {}, stops = [], selectedStop, onStopSelect }: { route: number | 'all'; geo: RouteGeo; mode?: MapMode; metrics?: Record<number, Metric>; stops?: MapStop[]; selectedStop?: MapStop | null; onStopSelect?: (stop: MapStop) => void }) {
+export default function OverviewMap({ route, geo, mode = 'passengers', metrics = {}, stops = [], selectedStop, onStopSelect, onRouteSelect }: { route: number | 'all'; geo: RouteGeo; mode?: MapMode; metrics?: Record<number, Metric>; stops?: MapStop[]; selectedStop?: MapStop | null; onStopSelect?: (stop: MapStop) => void; onRouteSelect?: (route: number) => void }) {
   const features = (geo.features as RouteFeature[]).filter((feature) => route === 'all' || feature.properties?.route === route)
   const data = { ...geo, features } as RouteGeo
   const visibleStops = stops.filter((stop) => route === 'all' || stop.route === route)
-  const stopCandidates = route === 'all'
-    ? visibleStops.filter((stop) => stop.is_hub || stop.sequence <= 2 || stop.boarding_share >= 0.035)
-    : visibleStops
   const stopByRouteAndName = new Map<string, MapStop>()
-  stopCandidates.forEach((stop) => {
-    const key = `${stop.route}|${stop.name}`
+  visibleStops.forEach((stop) => {
+    const key = stopGroupKey(stop)
     const current = stopByRouteAndName.get(key)
-    const isSelected = selectedStop?.route === stop.route && selectedStop.stop_id === stop.stop_id
-    if (!current || stop.boarding_share > current.boarding_share || isSelected) stopByRouteAndName.set(key, stop)
+    if (!current || stop.boarding_share > current.boarding_share) stopByRouteAndName.set(key, stop)
   })
   const displayStops = [...stopByRouteAndName.values()]
   const featurePoints = features.flatMap((feature) => feature.geometry.type === 'LineString'
     ? feature.geometry.coordinates.map((coord) => [coord[1], coord[0]] as [number, number])
     : feature.geometry.coordinates.flatMap((line) => line.map((coord) => [coord[1], coord[0]] as [number, number])))
   const fitPoints = displayStops.length ? displayStops.map((stop) => [stop.lat, stop.lon] as [number, number]) : featurePoints
-  const selectedStopKey = selectedStop ? `${selectedStop.route}|${selectedStop.direction}|${selectedStop.sequence}|${selectedStop.stop_id}` : ''
+  const selectedStopKey = selectedStop ? stopGroupKey(selectedStop) : ''
   const maxValue = Math.max(1, ...Object.values(metrics).map((metric) => metric.value))
   const styleFor = (routeId: number) => {
     const metric = metrics[routeId] ?? { value: 0, delta: 0 }
@@ -89,5 +80,5 @@ export default function OverviewMap({ route, geo, mode = 'passengers', metrics =
     return null
   }
 
-  return <article className="panel map-panel"><div className="panel-heading"><div><div className="panel-title">Маршруты на карте</div><div className="panel-subtitle">{modeTitles[mode]}</div></div><div className="map-badge"><MapPin size={13} /> МОСКВА</div></div><div className="map-frame"><MapContainer center={[55.7558, 37.6173]} zoom={10} scrollWheelZoom={false} className="leaflet-map"><TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" /><MapViewport route={route} points={fitPoints} /><GeoJSON key={`outline-${route}-${features.length}-${mode}`} data={data} interactive={false} style={(feature) => { const routeId = feature?.properties?.route ?? 1; const style = styleFor(routeId); const color = outlineFor(routeId); return { color: color ?? 'transparent', weight: style.weight + 2, opacity: color ? 0.9 : 0, lineCap: 'round', lineJoin: 'round' } }} /><GeoJSON key={`route-${route}-${features.length}-${mode}`} data={data} style={(feature) => ({ ...styleFor(feature?.properties?.route ?? 1), opacity: 0.94, lineCap: 'round', lineJoin: 'round' })} onEachFeature={(feature, layer) => { const props = feature.properties as RouteFeature['properties']; const metric = metrics[props?.route]; layer.bindTooltip(`Трамвай ${props?.route ?? ''} · ${props?.stop_count ?? 0} остановок${metric ? ` · ${mode === 'deviation' ? `${metric.delta >= 0 ? '+' : ''}${metric.delta.toFixed(1)}%` : `${Math.round(metric.value).toLocaleString('ru-RU')} посадок`}` : ''}`, { sticky: true }) }} /><StopPicker stops={visibleStops} onSelect={onStopSelect} />{displayStops.map((stop) => { const active = selectedStop?.stop_id === stop.stop_id && selectedStop.route === stop.route; const color = styleFor(stop.route).color; const markerKey = `${stop.route}-${stop.direction}-${stop.sequence}-${stop.stop_id}`; return <Fragment key={markerKey}>{active && <CircleMarker center={[stop.lat, stop.lon]} radius={9} interactive={false} pathOptions={{ color: '#ff6574', weight: 1, opacity: 0.65, fillColor: '#ff5265', fillOpacity: 0.16 }} />}<CircleMarker center={[stop.lat, stop.lon]} radius={active ? 5 : stop.is_hub ? 3.2 : 2.4} pathOptions={{ color: active ? '#fff' : route === 'all' ? '#06121c' : '#d7e8f8', weight: active ? 2 : route === 'all' ? 1.4 : 1, fillColor: active ? '#ff5265' : color, fillOpacity: 0.98 }} bubblingMouseEvents eventHandlers={{ click: () => onStopSelect?.(stop) }}><MapTooltip><b>{stop.name}</b><br />Маршрут {stop.route} · направление {stop.direction}<br />Нажмите для прогноза остановки</MapTooltip></CircleMarker></Fragment> })}</MapContainer><label className="map-stop-picker"><span>Остановка</span><select aria-label="Выбрать остановку на карте" value={selectedStopKey} onChange={(event) => { const stop = visibleStops.find((item) => `${item.route}|${item.direction}|${item.sequence}|${item.stop_id}` === event.target.value); if (stop) onStopSelect?.(stop) }}><option value="">Выберите остановку…</option>{visibleStops.map((stop) => { const key = `${stop.route}|${stop.direction}|${stop.sequence}|${stop.stop_id}`; return <option key={key} value={key}>№{stop.route} · {stop.name}</option> })}</select></label><div className="map-mode-info"><b>{modeTitles[mode]}</b><span>{modeDescriptions[mode]} · показаны ключевые остановки</span></div><div className="map-status-legend"><span><i className="below" />Ниже нормы</span><span><i className="better" />Лучше</span><span><i className="critical" />Критично</span></div><div className={`map-legend mode-${mode}`}><span className="legend-line" /> {modeTitles[mode]} <span className="legend-stop" /> Ключевая остановка</div></div><div className="map-note"><span className="note-info">i</span><span>Выберите остановку на карте, чтобы открыть её нагрузку и прогноз.</span></div></article>
+  return <article className="panel map-panel"><div className="panel-heading"><div><div className="panel-title">Маршруты на карте</div><div className="panel-subtitle">{modeTitles[mode]}</div></div><div className="map-badge"><MapPin size={13} /> МОСКВА</div></div><div className="map-frame"><MapContainer center={[55.7558, 37.6173]} zoom={10} scrollWheelZoom={false} className="leaflet-map"><TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" /><MapViewport route={route} points={fitPoints} /><Pane name="route-lines" style={{ zIndex: 410 }}><GeoJSON key={`outline-${route}-${features.length}-${mode}`} data={data} interactive={false} style={(feature) => { const routeId = feature?.properties?.route ?? 1; const style = styleFor(routeId); const color = outlineFor(routeId); return { color: color ?? 'transparent', weight: style.weight + 2, opacity: color ? 0.9 : 0, lineCap: 'round', lineJoin: 'round' } }} /><GeoJSON key={`route-${route}-${features.length}-${mode}`} data={data} style={(feature) => ({ ...styleFor(feature?.properties?.route ?? 1), opacity: 0.94, lineCap: 'round', lineJoin: 'round', cursor: metrics[feature?.properties?.route ?? 1] ? 'pointer' : 'default' })} onEachFeature={(feature, layer) => { const props = feature.properties as RouteFeature['properties']; const routeId = props?.route; const metric = metrics[routeId]; layer.bindTooltip(`Трамвай ${routeId ?? ''} · ${props?.stop_count ?? 0} остановок${metric ? ` · ${mode === 'deviation' ? `${metric.delta >= 0 ? '+' : ''}${metric.delta.toFixed(1)}%` : `${Math.round(metric.value).toLocaleString('ru-RU')} посадок`} · нажмите для анализа` : ''}`, { sticky: true }); if (metric) layer.on('click', () => onRouteSelect?.(routeId)) }} /></Pane><StopPicker stops={displayStops} onSelect={onStopSelect} /><Pane name="stop-markers" style={{ zIndex: 430 }}>{displayStops.map((stop) => { const groupKey = stopGroupKey(stop); const active = selectedStop ? stopGroupKey(selectedStop) === groupKey : false; const color = styleFor(stop.route).color; const directions = [...new Set(visibleStops.filter((item) => stopGroupKey(item) === groupKey).map((item) => item.direction + 1))].sort(); return <Fragment key={groupKey}><CircleMarker center={[stop.lat, stop.lon]} radius={10} pathOptions={{ color: 'transparent', weight: 0, fillColor: 'transparent', fillOpacity: 0 }} bubblingMouseEvents={false} eventHandlers={{ click: () => onStopSelect?.(stop) }}><MapTooltip><b>{stop.name}</b><br />Маршрут {stop.route} · {directions.length > 1 ? `направления ${directions.join(' и ')}` : `направление ${directions[0] ?? stop.direction + 1}`}<br />Нажмите, чтобы открыть остановку</MapTooltip></CircleMarker><CircleMarker center={[stop.lat, stop.lon]} radius={route === 'all' ? stop.is_hub ? 3.2 : 2.7 : stop.is_hub ? 3.8 : 3.3} interactive={false} pathOptions={{ color: active ? '#ffffff' : route === 'all' ? '#06121c' : '#d7e8f8', weight: active ? 1.6 : route === 'all' ? 1.2 : 1.2, fillColor: active ? '#ff5265' : color, fillOpacity: 1 }} /></Fragment> })}</Pane></MapContainer><label className="map-stop-picker"><span>Остановка</span><select aria-label="Выбрать остановку на карте" value={selectedStopKey} onChange={(event) => { const stop = displayStops.find((item) => stopGroupKey(item) === event.target.value); if (stop) onStopSelect?.(stop) }}><option value="">Выберите остановку…</option>{displayStops.map((stop) => { const key = stopGroupKey(stop); return <option key={key} value={key}>№{stop.route} · {stop.name}</option> })}</select></label><div className="map-status-legend"><span><i className="below" />Ниже нормы</span><span><i className="better" />Лучше</span><span><i className="critical" />Критично</span></div><div className={`map-legend mode-${mode}`}><span className="legend-line" /> {modeTitles[mode]} <span className="legend-stop" /> Остановка</div></div><div className="map-note"><span className="note-info">i</span><span>Нажмите на линию маршрута или остановку, чтобы открыть анализ.</span></div></article>
 }
