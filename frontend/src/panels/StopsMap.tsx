@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from 'recharts'
 import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { ArrowLeft } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
 import { fmt, getJson, lastDay, pad, useDebounced, useLive } from './shared'
 import type { RouteId } from './shared'
@@ -144,6 +145,7 @@ export default function StopsMap({ route: dashboardRoute, routeSummaries }: { ro
           <div>
             {selected ? (
               <>
+                <button className="x-back-button" type="button" onClick={() => setSelected(null)}><ArrowLeft size={14} />К списку остановок</button>
                 <div className="x-stop-title">{selected.name}{selected.is_hub ? ' ⇄' : ''}</div>
                 <div className="panel-subtitle" style={{ marginBottom: 8 }}>{selected.district ?? 'район не указан'} · ~{fmt(selected.boardings)} посадок · {(selected.share * 100).toFixed(1)}% потока маршрута</div>
                 <div className="segmented" style={{ width: 'fit-content', marginBottom: 6 }}><button className={mode === 'hour' ? 'active' : ''} onClick={() => setMode('hour')}>По часам</button><button className={mode === 'day' ? 'active' : ''} onClick={() => setMode('day')}>По дням месяца</button></div>

@@ -261,6 +261,9 @@ function App() {
       }
       if (event.key === 'Escape') {
         searchRef.current?.blur()
+        setRoute('all')
+        setSelectedStop(null)
+        setDetailTab('overview')
       }
     }
     window.addEventListener('keydown', focusSearch)
@@ -280,6 +283,17 @@ function App() {
   const stopWeekRows = stopInsight?.daily.filter((item) => item.date >= selectedDate && item.date <= weekEnd) ?? []
   const stopWeekTotal = stopWeekRows.reduce((sum, item) => sum + item.passengers, 0)
   const stopPeak = (stopInsight?.hourly ?? []).reduce((best, item) => item.passengers > best.passengers ? item : best, { hour: 0, passengers: 0 })
+  const stopDirections = useMemo(() => {
+    if (!selectedStop) return []
+    const byDirection = new Map<number, MapStop>()
+    stops
+      .filter((stop) => stop.route === selectedStop.route && stop.name.trim().toLocaleLowerCase('ru-RU') === selectedStop.name.trim().toLocaleLowerCase('ru-RU'))
+      .forEach((stop) => {
+        const current = byDirection.get(stop.direction)
+        if (!current || stop.stop_id === selectedStop.stop_id || stop.boarding_share > current.boarding_share) byDirection.set(stop.direction, stop)
+      })
+    return [...byDirection.values()].sort((left, right) => left.direction - right.direction)
+  }, [selectedStop, stops])
   const selectSearchResult = () => {
     const match = visibleEvents[0]
     if (match) {
@@ -294,6 +308,12 @@ function App() {
     setRoute(stop.route)
     setSelectedStop(stop)
     setDetailTab('stop')
+  }
+  const selectRouteOnMap = (routeId: number) => {
+    if (!routes.some((item) => item.id === routeId)) return
+    setRoute(routeId)
+    setSelectedStop(null)
+    setDetailTab('overview')
   }
   return <div className="app-shell">
     <header className="topbar">
@@ -318,14 +338,17 @@ function App() {
       {selectedRouteHasNoHistory && <div className="info-banner">По маршруту {route} нет исторических наблюдений.</div>}
       <section className="ops-grid">
         <article className="events-panel panel" id="routes"><div className="event-tabs"><button className={eventFilter === 'all' ? 'active' : ''} onClick={() => setEventFilter('all')}>Все маршруты <b>{routeEvents.length}</b></button><button className={eventFilter === 'critical' ? 'active' : ''} onClick={() => setEventFilter('critical')}>Критичные <b>{eventCounts.critical}</b></button><button className={eventFilter === 'warning' ? 'active' : ''} onClick={() => setEventFilter('warning')}>Риск <b>{eventCounts.warning}</b></button></div><label className="compact-select"><span>Сортировка:</span><select value={eventSort} onChange={(event) => setEventSort(event.target.value as typeof eventSort)}><option value="priority">По приоритету</option><option value="load">По пассажиропотоку</option><option value="route">По номеру маршрута</option></select><small>Показано {visibleEvents.length} из {routeEvents.length}</small></label><div className="ranking-list">{visibleEvents.map((item) => <button className={`event-card ${item.risk} ${route === item.id ? 'chosen' : ''}`} key={item.id} onClick={() => setRoute(route === item.id ? 'all' : item.id)}><TramFront size={18} /><span className="event-copy"><b>Маршрут {item.id}</b><strong>{item.risk === 'critical' ? 'Прогнозируется перегрузка' : item.risk === 'warning' ? 'Повышенная загрузка' : 'Штатная нагрузка'}</strong><small>{item.name}</small></span><span className="event-metric">{item.change === null ? '—' : `${item.change >= 0 ? '+' : ''}${item.change.toFixed(1)}%`}<i>{item.risk === 'critical' ? 'Критично' : item.risk === 'warning' ? 'Риск' : 'Норма'}</i></span></button>)}{visibleEvents.length === 0 && <div className="events-empty">Маршруты по заданным условиям не найдены</div>}</div><div className="events-scroll-hint">↕ Прокрутите список, чтобы увидеть все маршруты</div></article>
-        <Suspense fallback={<div className="panel map-panel loading-card" />}><OverviewMap route={route} geo={geo} mode={mapMode} metrics={mapMetrics} stops={stops} selectedStop={selectedStop} onStopSelect={selectStopOnMap} /></Suspense>
+        <Suspense fallback={<div className="panel map-panel loading-card" />}><OverviewMap route={route} geo={geo} mode={mapMode} metrics={mapMetrics} stops={stops} selectedStop={selectedStop} onStopSelect={selectStopOnMap} onRouteSelect={selectRouteOnMap} /></Suspense>
         <article className="route-detail panel">
           <div className="detail-tabs"><button className={detailTab === 'overview' ? 'active' : ''} onClick={() => setDetailTab('overview')}>Обзор</button><button className={detailTab === 'load' ? 'active' : ''} onClick={() => setDetailTab('load')}>Нагрузка</button><button className={detailTab === 'forecast' ? 'active' : ''} onClick={() => setDetailTab('forecast')}>Прогноз</button>{selectedStop && <button className={detailTab === 'stop' ? 'active stop-tab' : 'stop-tab'} onClick={() => setDetailTab('stop')}><MapPinned size={12} />Остановка</button>}</div>
           <div className="route-head"><div className="route-symbol">{detailTab === 'stop' && selectedStop ? <MapPinned /> : <TramFront />}</div><div><h2>{detailTab === 'stop' && selectedStop ? selectedStop.name : selectedRoute ? `Маршрут ${selectedRoute.id}` : 'Все маршруты'}</h2><p>{detailTab === 'stop' && selectedStop ? `Маршрут ${selectedStop.route} · ${selectedStop.district ?? 'район не указан'}` : selectedRoute?.name ?? `${routes.length} маршрутов сети`}</p></div>{detailTab === 'stop' && selectedStop ? <button className="stop-clear" title="Закрыть сведения об остановке" onClick={() => { setSelectedStop(null); setDetailTab('overview') }}>×</button> : <span className={`critical-badge ${selectedEvent?.risk ?? 'info'}`}>{selectedEvent?.risk === 'critical' ? 'Критично' : selectedEvent?.risk === 'warning' ? 'Риск' : selectedRoute ? 'Норма' : 'Сеть'}</span>}</div>
           {detailTab === 'overview' && <div className="detail-tab-content"><div className="detail-kpis"><div><span>Прогноз на день</span><b>{format(dayTotal)}</b><small>посадок</small></div><div><span>К похожему дню</span><b>{delta >= 0 ? '+' : ''}{delta.toFixed(1)}%</b><small>{delta >= 0 ? 'рост' : 'снижение'}</small></div></div><h3>Положение в сети</h3><ul className="alerts">{selectedRoute ? <><li className="orange">Место по пассажиропотоку <b>№{selectedRouteRank}</b></li><li className="orange">Доля месячного потока сети <b>{routeMonthShare.toFixed(1)}%</b></li></> : <><li className={eventCounts.critical ? 'red' : 'orange'}>Критичных маршрутов <b>{eventCounts.critical}</b></li><li className="orange">Маршрутов в зоне риска <b>{eventCounts.warning}</b></li></>}</ul><div className="recommendation"><Sparkles size={18} /><div><b>Рекомендация системы</b><p>{delta > 10 ? 'Увеличить выпуск в пиковый интервал.' : 'Сохранить текущий выпуск и продолжить наблюдение.'}</p></div></div></div>}
           {detailTab === 'load' && <div className="detail-tab-content"><div className="detail-kpis"><div><span>Максимум за час</span><b>{format(peak.passengers)}</b><small>{String(peak.hour).padStart(2, '0')}:00–{String((peak.hour + 1) % 24).padStart(2, '0')}:00</small></div><div><span>Среднее за час</span><b>{format(averageHour)}</b><small>посадок</small></div></div><div className="load-summary"><div><span>Часов высокой нагрузки</span><b>{busyHours}</b></div><div><span>Доля потока в час пик</span><b>{peakHourShare.toFixed(1)}%</b></div></div><h3>Профиль нагрузки по часам</h3><div className="mini-bars">{hourlyDayRows.filter((row) => row.hour >= 6 && row.hour <= 22 && row.hour % 2 === 0).map((row) => <div key={row.hour}><span>{String(row.hour).padStart(2, '0')}</span><i><b style={{ height: `${Math.max(4, row.passengers / Math.max(peak.passengers, 1) * 100)}%` }} /></i></div>)}</div></div>}
           {detailTab === 'forecast' && <div className="detail-tab-content forecast-detail"><div className="detail-kpis"><div><span>На 7 дней</span><b>{format(weeklyTotal)}</b><small>{dateLabel(selectedDate)} — {dateLabel(weekEnd)}</small></div><div><span>На месяц</span><b>{format(allMonthTotal)}</b><small>{monthNames[month - 1].toLowerCase()} 2025</small></div></div><h3>Динамика на ближайшие 7 дней</h3><div className="mini-bars forecast-bars weekly-bars">{weeklyChart.map((row) => <div key={row.date}><span>{dateLabel(row.date)}</span><i><b style={{ height: `${Math.max(4, row.passengers / Math.max(...weeklyChart.map((item) => item.passengers), 1) * 100)}%` }} /></i></div>)}</div><div className="forecast-caption">Прогноз по дням без повторения почасовых показателей из вкладки «Нагрузка».</div></div>}
-          {detailTab === 'stop' && selectedStop && <div className="detail-tab-content stop-detail">{stopInsightLoading ? <div className="detail-loading">Загружаем прогноз остановки…</div> : stopInsightError ? <div className="detail-error">{stopInsightError}</div> : stopInsight && <Suspense fallback={<div className="detail-loading">Строим график остановки…</div>}><StopHourly hourly={stopInsight.hourly} share={stopInsight.share} dateText={dateLabel(selectedDate)} weekTotal={stopWeekTotal} monthTotal={stopMonthTotal} format={format} /></Suspense>}</div>}
+          {detailTab === 'stop' && selectedStop && <div className="detail-tab-content stop-detail">
+            {stopDirections.length > 1 && <div className="stop-direction-toggle"><span>Направление движения</span><div className="segmented">{stopDirections.map((stop) => <button key={stop.direction} className={selectedStop.direction === stop.direction ? 'active' : ''} aria-pressed={selectedStop.direction === stop.direction} onClick={() => setSelectedStop(stop)}>Направление {stop.direction + 1}</button>)}</div></div>}
+            {stopInsightLoading ? <div className="detail-loading">Загружаем прогноз остановки…</div> : stopInsightError ? <div className="detail-error">{stopInsightError}</div> : stopInsight && <><div className="detail-kpis"><div><span>Посадки сегодня</span><b>{format(stopDayTotal)}</b><small>прогноз</small></div><div><span>Прогноз на месяц</span><b>{format(stopMonthTotal)}</b><small>посадок</small></div></div><div className="load-summary"><div><span>Доля потока маршрута</span><b>{(stopInsight.share * 100).toFixed(1)}%</b></div><div><span>Пиковый час</span><b>{String(stopPeak.hour).padStart(2, '0')}:00</b></div></div><h3>Загрузка остановки по часам</h3><div className="mini-bars stop-bars">{stopInsight.hourly.filter((item) => item.hour >= 6 && item.hour <= 22 && item.hour % 2 === 0).map((item) => <div key={item.hour}><span>{String(item.hour).padStart(2, '0')}</span><i><b style={{ height: `${Math.max(4, item.passengers / Math.max(stopPeak.passengers, 1) * 100)}%` }} /></i></div>)}</div><div className="stop-forecast-strip"><span>Ближайшие 7 дней</span><b>{format(stopWeekTotal)} посадок</b></div></>}
+          </div>}
           <div className="detail-actions"><button className="active" onClick={showRouteOnMap}><MapPinned size={14} />Показать на карте</button><button onClick={() => exportFile('csv')}><Download size={14} />Скачать CSV</button></div>
         </article>
       </section>
