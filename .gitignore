@@ -16,6 +16,9 @@ dataset/labels/*
 !dataset/spravochniki/
 dataset/spravochniki/*
 !dataset/spravochniki/Хакатон_справочники_трамвай_10_маршрутов.xlsx
+!dataset/osm/
+dataset/osm/*
+!dataset/osm/tram_routes_extra.json
 
 # The root submission is tracked; the duplicate intermediate stays local.
 artifacts/*
