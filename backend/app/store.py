@@ -74,12 +74,14 @@ class DataStore:
         return True
 
     def _apply(self, extra: pd.DataFrame) -> None:
-        self.ingested_boardings = int(extra["boardings"].sum()) if len(extra) else 0
-        self.updated_at = datetime.now(timezone.utc)
+        extra = extra[extra["route"].isin(self.routes)]  # чужой/неизвестный маршрут не должен портить кубы истории
         frame = pd.concat([self._labels, extra.drop(columns="batch_id")], ignore_index=True)
         last = max(config.HISTORY_END, extra["date"].max().date()) if len(extra) else config.HISTORY_END
         history = Series.from_frame(frame, "boardings", self.routes, config.HISTORY_START, last)
         self._rebuild(history, last)
+        # self.* ниже — только после успешного _rebuild, чтобы ошибка не оставляла store в частично обновлённом состоянии
+        self.ingested_boardings = int(extra["boardings"].sum()) if len(extra) else 0
+        self.updated_at = datetime.now(timezone.utc)
 
     def _rebuild(self, history: Series, last) -> None:
         lo, hi = history.span(config.RECENT_START, config.HISTORY_END)

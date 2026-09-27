@@ -37,7 +37,13 @@ export default function Coefficients({ route }: { route: RouteId }) {
   }, [])
 
   const days = lastDay(2025, month)
-  useEffect(() => { getJson<WeatherInfo>(`/api/v1/weather?start=2025-${pad(month)}-01&end=2025-${pad(month)}-${pad(days)}`).then(setWeatherInfo).catch(() => setWeatherInfo(null)) }, [month, days])
+  useEffect(() => {
+    const controller = new AbortController()
+    getJson<WeatherInfo>(`/api/v1/weather?start=2025-${pad(month)}-01&end=2025-${pad(month)}-${pad(days)}`, controller.signal)
+      .then(setWeatherInfo)
+      .catch((e: Error) => { if (e.name !== 'AbortError') setWeatherInfo(null) })
+    return () => controller.abort()
+  }, [month, days])
   const body = useDebounced(useMemo(() => {
     const ym = `2025-${pad(month)}`
     const b: Record<string, unknown> = { start: `${ym}-01`, end: `${ym}-${pad(days)}`, granularity: 'day', factors, rules: [], calendar, regime: regimeOn, weather_auto: weatherOn }
