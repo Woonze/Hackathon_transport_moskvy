@@ -57,6 +57,7 @@ function App() {
   const [stopInsightError, setStopInsightError] = useState('')
   const [stopInsightLoading, setStopInsightLoading] = useState(false)
   const [health, setHealth] = useState<Health | null>(null)
+  const [lastMonthTotals, setLastMonthTotals] = useState<Record<number, number>>({})
   const [month, setMonth] = useState(11)
   const [route, setRoute] = useState<number | 'all'>('all')
   const [navSection, setNavSection] = useState<'overview' | 'routes' | 'history'>('overview')
@@ -91,6 +92,19 @@ function App() {
     }).catch((e: Error) => { if (e.name !== 'AbortError') setReferenceError(e.message) })
     return () => controller.abort()
   }, [])
+
+  useEffect(() => {
+    if (!health?.history_period) return
+    const controller = new AbortController()
+    const lastMonth = health.history_period[1].slice(0, 7)
+    const [y, m] = lastMonth.split('-').map(Number)
+    const end = `${lastMonth}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
+    fetch(`${API}/api/history?start=${lastMonth}-01&end=${end}&granularity=month`, { signal: controller.signal })
+      .then((r) => r.ok ? r.json() : [])
+      .then((rows: { route: number; passengers: number }[]) => setLastMonthTotals(Object.fromEntries(rows.map((row) => [row.route, row.passengers]))))
+      .catch(() => {})
+    return () => controller.abort()
+  }, [health])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -192,18 +206,12 @@ function App() {
       ? `посадок · ${dateLabel(selectedDate)} — ${dateLabel(weekEnd)}`
       : `посадок за ${monthNames[month - 1].toLowerCase()}`
   const routeRanking = useMemo(() => routes.map((item) => ({ ...item, value: monthForecast.filter((row) => row.route === item.id).reduce((sum, row) => sum + row.passengers, 0) })).sort((a, b) => b.value - a.value), [routes, monthForecast])
-  const historyMonths = useMemo(() => {
-    if (!health?.history_period) return 10
-    const [sy, sm] = health.history_period[0].slice(0, 7).split('-').map(Number)
-    const [ey, em] = health.history_period[1].slice(0, 7).split('-').map(Number)
-    return (ey - sy) * 12 + (em - sm) + 1
-  }, [health])
   const routeEvents = useMemo(() => routeRanking.map((item) => {
-    const historicalMonthAverage = item.historical_total / historyMonths
-    const change = historicalMonthAverage > 0 ? (item.value / historicalMonthAverage - 1) * 100 : null
+    const lastMonthTotal = lastMonthTotals[item.id] ?? 0
+    const change = lastMonthTotal > 0 ? (item.value / lastMonthTotal - 1) * 100 : null
     const risk: EventRisk = change !== null && change >= 8 ? 'critical' : change !== null && change >= 2 ? 'warning' : 'info'
     return { ...item, change, risk }
-  }), [routeRanking, historyMonths])
+  }), [routeRanking, lastMonthTotals])
   const eventCounts = useMemo(() => ({
     critical: routeEvents.filter((item) => item.risk === 'critical').length,
     warning: routeEvents.filter((item) => item.risk === 'warning').length,
@@ -352,7 +360,7 @@ function App() {
           <div className="detail-actions"><button className="active" onClick={showRouteOnMap}><MapPinned size={14} />Показать на карте</button><button onClick={() => exportFile('csv')}><Download size={14} />Скачать CSV</button></div>
         </article>
       </section>
-      <section className="forecast-grid"><Suspense fallback={<div className="panel flow-panel loading-card" />}><FlowChart mode={mode} data={chartData} total={format(chartTotal)} caption={chartCaption} format={format} onModeChange={setMode} /></Suspense><article className="panel day-panel"><div className="panel-heading"><div><div className="panel-title">Почасовой прогноз</div><div className="panel-subtitle">{dateLabel(selectedDate, true)}</div></div><div className="date-chip">Таблица</div></div><div className="hour-table-head"><span>Время</span><span>Прогноз</span><span>Загрузка</span></div><div className="hour-list">{hourlyDayRows.filter((row) => row.hour >= 14 && row.hour <= 19).map((row) => { const pct = Math.round(row.passengers / Math.max(peak.passengers, 1) * 172); return <div className={`hour-row ${row.hour === peak.hour ? 'peak-row' : ''}`} key={row.hour}><span>{String(row.hour).padStart(2, '0')}:00</span><b>{format(row.passengers)}</b><strong className={pct > 130 ? 'hot' : ''}>{pct}%</strong></div> })}</div></article></section>
+      <section className="forecast-grid"><Suspense fallback={<div className="panel flow-panel loading-card" />}><FlowChart mode={mode} data={chartData} total={format(chartTotal)} caption={chartCaption} format={format} onModeChange={setMode} /></Suspense><article className="panel day-panel"><div className="panel-heading"><div><div className="panel-title">Почасовой прогноз</div><div className="panel-subtitle">{dateLabel(selectedDate, true)}</div></div><div className="date-chip">Таблица</div></div><div className="hour-table-head"><span>Время</span><span>Прогноз</span><span>Загрузка</span></div><div className="hour-list">{hourlyDayRows.filter((row) => row.hour >= 14 && row.hour <= 19).map((row) => { const pct = Math.round(row.passengers / Math.max(peak.passengers, 1) * 100); return <div className={`hour-row ${row.hour === peak.hour ? 'peak-row' : ''}`} key={row.hour}><span>{String(row.hour).padStart(2, '0')}:00</span><b>{format(row.passengers)}</b><strong className={pct > 75 ? 'hot' : ''}>{pct}%</strong></div> })}</div></article></section>
       <div className="deep-analytics"><div id="history"><Suspense fallback={<div className="loading-card">Загружаем прогнозные горизонты…</div>}><Horizons route={route} /></Suspense></div><div id="settings"><Suspense fallback={<div className="loading-card">Загружаем сценарии…</div>}><Coefficients route={route} /></Suspense></div></div>
       <footer className="page-footer"><span>Московский городской транспорт · Единый диспетчерский центр</span><span><span className="live-dot" /> модель временных рядов активна</span></footer>
     </main>
